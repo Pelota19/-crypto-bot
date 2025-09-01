@@ -6,3 +6,5 @@ data/*.db
 models/
 .DS_Store
 .vscode/
+logs/
+config.yml
