@@ -1,5 +1,10 @@
+# Core runtime
+python-dotenv>=1.0.1
+PyYAML>=6.0.2
+
+# Add your existing dependencies below (if any were already present, keep them)
+# Example:
 ccxt
-python-dotenv
 pandas
 numpy
 aiohttp

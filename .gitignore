@@ -1,8 +1,6 @@
-__pycache__/
-*.py[cod]
 .venv/
+__pycache__/
+*.pyc
 .env
-data/*.db
-models/
-.DS_Store
-.vscode/
+config.yml
+logs/
