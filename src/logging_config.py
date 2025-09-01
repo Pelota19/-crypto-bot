@@ -4,7 +4,7 @@ from datetime import datetime
 from src.config import LOG_LEVEL
 
 level = getattr(logging, LOG_LEVEL.upper(), logging.INFO)
-fmt = "%(...
+fmt = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 
 root = logging.getLogger()
 
