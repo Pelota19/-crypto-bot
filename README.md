@@ -81,7 +81,29 @@ Comandos disponibles:
 - `DAILY_PROFIT_TARGET_USD`, `MAX_DAILY_LOSS_USD`.
 - `BINANCE_TESTNET`, `BINANCE_API_KEY`, `BINANCE_API_SECRET`.
 
+## Desarrollo y Validación
+
+Validar configuración:
+```bash
+python validate_config.py
+```
+
+Ejecutar tests:
+```bash
+python test_basic.py
+# o
+python -m pytest test_basic.py -v
+```
+
+Linting y formateo:
+```bash
+python -m ruff check .
+python -m black .
+python -m mypy src --ignore-missing-imports
+```
+
 ## Notas
 
 - Este bot inicia con una estrategia base (EMA + RSI) para 1m como punto de partida. Es modular para incorporar técnicas más modernas (microestructura, orderbook, IA de ajuste dinámico de parámetros).
 - En testnet de Binance Futuros (USDM), los pares típicos disponibles incluyen BTC/USDT y ETH/USDT. La disponibilidad de OCO/SL/TP puede variar; el gestor de órdenes abstrae y aplica la mejor aproximación soportada por la API.
+- El bot incluye validación de configuración, tests básicos y manejo robusto de errores para mayor estabilidad.

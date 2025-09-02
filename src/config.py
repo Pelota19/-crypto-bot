@@ -11,6 +11,7 @@ CONFIG_PATH = Path("config.yml")
 _yaml = None
 try:
     import yaml as _yaml_pkg  # type: ignore
+
     _yaml = _yaml_pkg
 except Exception:
     _yaml = None
@@ -23,7 +24,10 @@ if _yaml and CONFIG_PATH.exists():
     except Exception:
         _config = {}
 
-def _get(name: str, env_name: str, default: Any, cast: Callable[[Any], Any] = lambda x: x) -> Any:
+
+def _get(
+    name: str, env_name: str, default: Any, cast: Callable[[Any], Any] = lambda x: x
+) -> Any:
     # Priority: config.yml -> environment -> default
     if name in _config:
         try:
@@ -39,6 +43,7 @@ def _get(name: str, env_name: str, default: Any, cast: Callable[[Any], Any] = la
     except Exception:
         return val
 
+
 # Simple casters
 def _bool(v):
     if isinstance(v, bool):
@@ -46,11 +51,14 @@ def _bool(v):
     s = str(v).strip().lower()
     return s in ("1", "true", "yes", "y", "on")
 
+
 def _float(v):
     return float(v)
 
+
 def _int(v):
     return int(v)
+
 
 # General mode
 MODE = _get("MODE", "MODE", "paper", lambda v: str(v).lower())  # 'paper' or 'live'
@@ -61,9 +69,15 @@ BINANCE_API_KEY = _get("BINANCE_API_KEY", "BINANCE_API_KEY", "", str)
 BINANCE_API_SECRET = _get("BINANCE_API_SECRET", "BINANCE_API_SECRET", "", str)
 
 # Money / risk settings
-STARTING_BALANCE_USDT = _get("STARTING_BALANCE_USDT", "STARTING_BALANCE_USDT", 1000.0, _float)
-POSITION_SIZE_PERCENT = _get("POSITION_SIZE_PERCENT", "POSITION_SIZE_PERCENT", 1.0, _float) / 100.0
-DAILY_PROFIT_TARGET_USD = _get("DAILY_PROFIT_TARGET_USD", "DAILY_PROFIT_TARGET_USD", 40.0, _float)
+STARTING_BALANCE_USDT = _get(
+    "STARTING_BALANCE_USDT", "STARTING_BALANCE_USDT", 1000.0, _float
+)
+POSITION_SIZE_PERCENT = (
+    _get("POSITION_SIZE_PERCENT", "POSITION_SIZE_PERCENT", 1.0, _float) / 100.0
+)
+DAILY_PROFIT_TARGET_USD = _get(
+    "DAILY_PROFIT_TARGET_USD", "DAILY_PROFIT_TARGET_USD", 40.0, _float
+)
 MAX_DAILY_LOSS_USD = _get("MAX_DAILY_LOSS_USD", "MAX_DAILY_LOSS_USD", 100.0, _float)
 
 # Notifications

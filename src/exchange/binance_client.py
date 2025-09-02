@@ -4,6 +4,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 def create_binance_exchange():
     """
     Crea y devuelve una instancia async de ccxt para Binance USDM (futuros USDT).

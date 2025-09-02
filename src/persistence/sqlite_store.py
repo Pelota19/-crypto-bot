@@ -1,12 +1,16 @@
 import sqlite3
 import threading
-from datetime import datetime
-from typing import Optional
+import os
+from datetime import datetime, timezone
 
 DB_PATH = "data/crypto_bot.db"
 _LOCK = threading.Lock()
 
+
 def _ensure_db():
+    # Ensure data directory exists
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+
     with _LOCK:
         conn = sqlite3.connect(DB_PATH)
         cur = conn.cursor()
@@ -36,23 +40,38 @@ def _ensure_db():
         conn.commit()
         conn.close()
 
-def save_order(symbol: str, side: str, price: float, amount: float, value_usd: float, status: str):
+
+def save_order(
+    symbol: str, side: str, price: float, amount: float, value_usd: float, status: str
+):
     _ensure_db()
     with _LOCK:
         conn = sqlite3.connect(DB_PATH)
         cur = conn.cursor()
         cur.execute(
             "INSERT INTO orders (ts, symbol, side, price, amount, value_usd, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (datetime.utcnow().isoformat(), symbol, side, price, amount, value_usd, status),
+            (
+                datetime.now(timezone.utc).isoformat(),
+                symbol,
+                side,
+                price,
+                amount,
+                value_usd,
+                status,
+            ),
         )
         conn.commit()
         conn.close()
+
 
 def save_balance(balance_usd: float):
     _ensure_db()
     with _LOCK:
         conn = sqlite3.connect(DB_PATH)
         cur = conn.cursor()
-        cur.execute("INSERT INTO balances (ts, balance_usd) VALUES (?, ?)", (datetime.utcnow().isoformat(), balance_usd))
+        cur.execute(
+            "INSERT INTO balances (ts, balance_usd) VALUES (?, ?)",
+            (datetime.now(timezone.utc).isoformat(), balance_usd),
+        )
         conn.commit()
         conn.close()
