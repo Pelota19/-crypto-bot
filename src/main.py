@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import pandas as pd
 from src.logging_config import *
 from src.exchange.binance_client import create_binance_exchange
 from src.fetcher import fetch_ohlcv_for_symbol
