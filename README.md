@@ -1,109 +1,224 @@
 # Crypto Scalping Bot
 
-Bot de trading automatizado para scalping en criptomonedas. Actualmente configurado para operar exclusivamente en **Binance Futuros (USDM) testnet**, con objetivo diario de ganancias (P&L) y notificaciones/controles por **Telegram**.
+Bot de trading automatizado para scalping en criptomonedas con **configuración dirigida por plan**. Actualmente configurado para operar en **Binance Futuros (USDM) testnet**, con gestión de riesgo avanzada, selección dinámica de universo y notificaciones por **Telegram**.
 
-## Características
+## 🚀 Características Principales
 
-- Scalping multipar con timeframe 1m (EMA + RSI como base).
-- Gestión de riesgo: tamaño de posición, Stop Loss (SL) y Take Profit (TP).
-- Meta diaria (P&L) en USD: al alcanzarla, el bot detiene nuevas entradas hasta el siguiente día.
-- Integración con Telegram como consola (/status, /pause, /resume).
-- Arquitectura modular y lista para extender con técnicas más modernas e IA.
+### Sistema de Configuración por Plan
+- **Configuración YAML**: Plan de trading centralizado en `config/plan.yml`
+- **Selección dinámica de universo**: Símbolos basados en liquidez y volumen
+- **Guardrails de riesgo**: Límites automáticos de posición y pérdida diaria
+- **Modo fallback**: Degradación automática de testnet a paper si faltan credenciales
+- **CLI seguro**: Aplicación de configuración sin tocar secretos
 
-## Estructura
+### Trading y Gestión de Riesgo
+- **Scalping conservador**: Timeframe 5m por defecto con EMA + RSI
+- **Gestión de riesgo**: 0.5% tamaño de posición, 2% pérdida diaria máxima
+- **Stop Loss/Take Profit**: 0.20%/0.40% configurables por plan
+- **Apalancamiento**: 5x en modo aislado por defecto
+- **Órdenes bracket**: SL/TP automáticos en modo live
+
+### Integración y Monitoreo
+- **Telegram avanzado**: Comandos extendidos (`/status`, `/plan`, `/refresh`)
+- **Persistencia SQLite**: Historial de órdenes y balances
+- **Logs estructurados**: Logging completo con rotación diaria
+- **CI/CD**: Validación automática de configuración
+
+## 📁 Estructura del Proyecto
 
 ```
 .
-├─ .env.example
-├─ .gitignore
-├─ README.md
-├─ requirements.txt
-├─ scripts/
-│  └─ run.sh
-└─ src/
-   ├─ __init__.py
-   ├─ main.py
-   ├─ config.py
-   ├─ state.py
-   ├─ exchange/
-   │  └─ binance_client.py
-   ├─ orders/
-   │  └─ manager.py
-   ├─ risk/
-   │  └─ manager.py
-   ├─ strategy/
-   │  └─ scalping.py
-   └─ telegram/
-      └─ console.py
+├── config/
+│   └── plan.yml                 # Configuración de trading centralizada
+├── scripts/
+│   ├── apply_profile.py         # CLI para aplicar plan a .env
+│   └── run.sh
+├── src/
+│   ├── config/
+│   │   └── plan_loader.py       # Carga y validación de planes
+│   ├── risk/
+│   │   ├── manager.py           # Cálculos SL/TP
+│   │   └── guardrails.py        # Aplicación de límites de riesgo
+│   ├── universe/
+│   │   └── selector.py          # Selección dinámica de símbolos
+│   ├── exchange/
+│   │   └── binance_client.py    # Cliente de Binance Futures
+│   ├── orders/
+│   │   └── manager.py           # Gestión de órdenes y brackets
+│   ├── persistence/
+│   │   └── sqlite_store.py      # Almacenamiento de datos
+│   ├── telegram/
+│   │   └── console.py           # Interfaz de Telegram
+│   └── main.py                  # Loop principal de trading
+├── .github/workflows/
+│   └── validate-profile.yml     # CI para validación de planes
+├── test_plan_system.py          # Tests de validación completa
+└── README.md
 ```
 
-## Requisitos
+## 🛠️ Instalación y Configuración Rápida
 
-- Python 3.10+
-- Cuenta de testnet de Binance Futuros (USDM) y claves API de testnet.
-- Bot de Telegram y `chat_id`.
+### 1. Configuración del Entorno
 
-## Instalación
-
-1) Crear y activar entorno virtual:
 ```bash
+# Crear y activar entorno virtual
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
-```
 
-2) Instalar dependencias:
-```bash
+# Instalar dependencias
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-3) Configurar variables de entorno:
-- Copiar `.env.example` a `.env` y completar con tus datos reales de testnet y Telegram.
+### 2. Configuración con Plan (Recomendado)
 
-4) Ejecutar:
 ```bash
-bash scripts/run.sh
-# o
-python -m src.main
-```
+# Aplicar configuración desde el plan
+python scripts/apply_profile.py --dry-run    # Previsualizar cambios
+python scripts/apply_profile.py --write      # Aplicar a .env
 
-## Uso por Telegram
-
-Comandos disponibles:
-- `/status`: muestra estado actual (P&L del día, objetivo, pausado/activo).
-- `/pause`: pausa nuevas entradas.
-- `/resume`: reanuda entradas (si no se alcanzó el P&L del día).
-
-## Parámetros clave (desde .env)
-
-- `MODE`: "paper" o "live".
-- `STARTING_BALANCE_USDT`, `POSITION_SIZE_PERCENT`.
-- `DAILY_PROFIT_TARGET_USD`, `MAX_DAILY_LOSS_USD`.
-- `BINANCE_TESTNET`, `BINANCE_API_KEY`, `BINANCE_API_SECRET`.
-
-## Desarrollo y Validación
-
-Validar configuración:
-```bash
+# Validar configuración
 python validate_config.py
+
+# Validar sistema completo
+python test_plan_system.py
 ```
 
-Ejecutar tests:
+### 3. Configuración Manual de Secretos
+
+Editar `.env` y agregar las credenciales:
+
 ```bash
-python test_basic.py
-# o
-python -m pytest test_basic.py -v
+# Binance Testnet (obligatorio para modo live)
+BINANCE_API_KEY=tu_api_key_testnet
+BINANCE_API_SECRET=tu_api_secret_testnet
+
+# Telegram (opcional pero recomendado)
+TELEGRAM_TOKEN=tu_bot_token
+TELEGRAM_CHAT_ID=tu_chat_id
 ```
 
-Linting y formateo:
+### 4. Ejecución
+
 ```bash
+# Ejecutar bot
+python -m src.main
+
+# O usando script
+bash scripts/run.sh
+```
+
+## 📋 Configuración del Plan (config/plan.yml)
+
+El bot utiliza un sistema de configuración dirigida por plan que permite:
+
+### Configuración de Riesgo
+```yaml
+risk:
+  position_size_pct: 0.5          # 0.5% de equity por posición
+  max_risk_per_trade_pct: 0.5     # Máximo 0.5% de riesgo por trade
+  max_daily_loss_pct: 2.0         # Máximo 2% de pérdida diaria
+  max_concurrent_positions: 3      # Máximo 3 posiciones simultáneas
+  leverage: 5                      # Apalancamiento 5x
+  margin_mode: "ISOLATED"          # Modo de margen aislado
+```
+
+### Selección Dinámica de Universo
+```yaml
+universe:
+  mode: "dynamic"                  # Selección automática basada en liquidez
+  dynamic_selector:
+    min_quote_volume_24h_usdt: 300000000  # Mínimo 300M USDT volumen
+    max_spread_bps: 2                     # Máximo 2 bps de spread
+    max_symbols: 10                       # Máximo 10 símbolos
+```
+
+### Stop Loss y Take Profit
+```yaml
+sl_tp:
+  sl_pct: 0.20                     # Stop Loss 0.20%
+  tp_pct: 0.40                     # Take Profit 0.40%
+```
+
+## 🎮 Comandos de Telegram
+
+Comandos disponibles para control del bot:
+
+- `/status` - Estado completo (equity, PnL, posiciones, plan activo)
+- `/plan` - Información del plan de trading actual  
+- `/pause` - Pausar nuevas entradas
+- `/resume` - Reanudar trading
+- `/refresh` - Forzar actualización del universo dinámico
+
+## 🔧 Configuración Avanzada
+
+### Modo de Fallback Automático
+
+El bot automáticamente degrada de `live_testnet` a `paper` si faltan credenciales:
+
+```
+Plan mode is 'live_testnet' but API credentials are missing. 
+Falling back to paper mode.
+```
+
+### Guardrails de Riesgo
+
+Sistema automático que previene:
+- Posiciones que excedan el tamaño máximo configurado
+- Trading cuando se alcanza la pérdida diaria máxima  
+- Más posiciones concurrentes del límite configurado
+
+### Selección Dinámica de Símbolos
+
+Criterios de filtrado automático:
+- Volumen mínimo de 24h
+- Spread máximo permitido
+- Profundidad mínima de orderbook
+- Volatilidad realizada mínima
+
+## 🧪 Desarrollo y Testing
+
+### Validación Completa
+```bash
+python test_plan_system.py        # Test completo del sistema
+python validate_config.py         # Validación de configuración
+python test_basic.py             # Tests básicos
+```
+
+### Desarrollo
+```bash
+# Linting y formateo
 python -m ruff check .
 python -m black .
 python -m mypy src --ignore-missing-imports
 ```
 
-## Notas
+## 📊 Compatibilidad y Migración
 
-- Este bot inicia con una estrategia base (EMA + RSI) para 1m como punto de partida. Es modular para incorporar técnicas más modernas (microestructura, orderbook, IA de ajuste dinámico de parámetros).
-- En testnet de Binance Futuros (USDM), los pares típicos disponibles incluyen BTC/USDT y ETH/USDT. La disponibilidad de OCO/SL/TP puede variar; el gestor de órdenes abstrae y aplica la mejor aproximación soportada por la API.
-- El bot incluye validación de configuración, tests básicos y manejo robusto de errores para mayor estabilidad.
+### Compatibilidad hacia atrás
+- ✅ Funciona con y sin `plan.yml`
+- ✅ Mantiene semántica existente de paper/live
+- ✅ Variables de entorno existentes respetadas
+
+### Migración desde versión anterior
+1. El bot funciona sin cambios si no existe `plan.yml`
+2. Para activar el sistema de plan: `python scripts/apply_profile.py --write`
+3. Personalizar `config/plan.yml` según necesidades
+
+## ⚡ Características de Seguridad
+
+- **Separación de secretos**: Configuración operacional separada de credenciales
+- **Defaults conservadores**: Configuración segura por defecto
+- **Validación automática**: CI/CD que valida configuración en cada cambio
+- **Modo papel automático**: Fallback seguro si faltan credenciales
+- **Límites estrictos**: Guardrails que previenen trading riesgoso
+
+## 📈 Roadmap y Extensibilidad
+
+El bot está diseñado modularmente para incorporar:
+- ✅ Gestión de riesgo avanzada
+- ✅ Selección dinámica de universo  
+- 🔄 Microestructura de mercado
+- 🔄 Machine learning para parámetros dinámicos
+- 🔄 Análisis de orderbook en tiempo real
+- 🔄 Optimización automática de spreads
