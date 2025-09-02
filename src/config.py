@@ -52,13 +52,13 @@ def _float(v):
 def _int(v):
     return int(v)
 
-# Bybit / exchange settings
-BYBIT_MODE = _get("BYBIT_MODE", "BYBIT_MODE", "paper", lambda v: str(v).lower())  # 'paper' or 'live'
-BYBIT_TESTNET = _get("BYBIT_TESTNET", "BYBIT_TESTNET", True, _bool)
-BYBIT_DEFAULT_TYPE = _get("BYBIT_DEFAULT_TYPE", "BYBIT_DEFAULT_TYPE", "swap", str)
+# General mode
+MODE = _get("MODE", "MODE", "paper", lambda v: str(v).lower())  # 'paper' or 'live'
 
-BYBIT_API_KEY = _get("BYBIT_API_KEY", "BYBIT_API_KEY", "", str)
-BYBIT_API_SECRET = _get("BYBIT_API_SECRET", "BYBIT_API_SECRET", "", str)
+# Binance futures (USDM) settings
+BINANCE_TESTNET = _get("BINANCE_TESTNET", "BINANCE_TESTNET", True, _bool)
+BINANCE_API_KEY = _get("BINANCE_API_KEY", "BINANCE_API_KEY", "", str)
+BINANCE_API_SECRET = _get("BINANCE_API_SECRET", "BINANCE_API_SECRET", "", str)
 
 # Money / risk settings
 STARTING_BALANCE_USDT = _get("STARTING_BALANCE_USDT", "STARTING_BALANCE_USDT", 1000.0, _float)
