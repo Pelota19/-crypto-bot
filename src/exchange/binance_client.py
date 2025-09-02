@@ -66,3 +66,23 @@ class BinanceFuturesClient:
     def market_order(self, symbol: str, side: str, amount: float, reduce_only: bool = False) -> Dict[str, Any]:
         params = {"reduceOnly": True} if reduce_only else {}
         return self.exchange.create_order(symbol=symbol, type="market", side=side, amount=amount, params=params)
+
+    def set_leverage(self, symbol: str, leverage: int) -> bool:
+        """Set leverage for a symbol. Returns True on success, False on failure."""
+        try:
+            self.exchange.set_leverage(leverage, symbol)
+            log.info(f"Set leverage {leverage} for {symbol}")
+            return True
+        except Exception as e:
+            log.warning(f"Failed to set leverage {leverage} for {symbol}: {e}")
+            return False
+
+    def set_margin_mode(self, symbol: str, mode: str = "ISOLATED") -> bool:
+        """Set margin mode for a symbol. Returns True on success, False on failure."""
+        try:
+            self.exchange.set_margin_mode(mode, symbol)
+            log.info(f"Set margin mode {mode} for {symbol}")
+            return True
+        except Exception as e:
+            log.warning(f"Failed to set margin mode {mode} for {symbol}: {e}")
+            return False
