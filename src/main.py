@@ -1,8 +1,7 @@
 import asyncio
 import logging
-import pandas as pd
 from src.logging_config import *
-from src.exchange.bybit_client import create_bybit_exchange
+from src.exchange.binance_client import create_binance_exchange
 from src.fetcher import fetch_ohlcv_for_symbol
 from src.strategy.strategy import decide_signal
 from src.trade_manager import manage_position, get_balance_simulated
@@ -12,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 # main orchestration
 async def run_once(symbol: str = None):
-    exchange = create_bybit_exchange()
+    exchange = create_binance_exchange()
     try:
         markets = await exchange.load_markets()
         logger.info("Markets loaded: %d", len(markets))

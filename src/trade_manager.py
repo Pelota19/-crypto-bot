@@ -1,5 +1,5 @@
 import logging
-from src.config import BYBIT_MODE, POSITION_SIZE_PERCENT, STARTING_BALANCE_USDT, DAILY_PROFIT_TARGET_USD, MAX_DAILY_LOSS_USD
+from src.config import MODE, POSITION_SIZE_PERCENT, STARTING_BALANCE_USDT, DAILY_PROFIT_TARGET_USD, MAX_DAILY_LOSS_USD
 from src.persistence.sqlite_store import save_order, save_balance
 from src.notifier.telegram_notifier import send_message
 import asyncio
@@ -57,7 +57,7 @@ async def manage_position(exchange, symbol: str, signal: str, ohlcv_last_price: 
     amount = order_value / float(ohlcv_last_price)
 
     side = "buy" if signal == "buy" else "sell"
-    if BYBIT_MODE == "paper":
+    if MODE == "paper":
         # simulate execution at last price
         save_order(symbol, side, float(ohlcv_last_price), float(amount), float(order_value), "filled_paper")
         # simple PnL simulation: assume immediate unrealized PnL 0 (we log executed value)
@@ -69,12 +69,13 @@ async def manage_position(exchange, symbol: str, signal: str, ohlcv_last_price: 
     else:
         # LIVE mode - attempt to create a market order (simplified example)
         try:
-            # note: for bybit futures may require params like reduceOnly/leverage; this is a basic example
-            order = await exchange.create_order(symbol, "market", side, amount, None, {})
+            # note: for binance futures may require params like reduceOnly/leverage; this is a basic example
+            order = await exchange.create_order(symbol=symbol, type="market", side=side, amount=amount)
             save_order(symbol, side, order.get("price") or ohlcv_last_price, amount, order_value, "filled_live")
-            await send_message(f"LIVE ORDER placed: {side} {symbol} amount={amount:.6f} value_usd={order_value:.2f}")
-            return {"status": "live_filled", "order": order}
+            await send_message(f"LIVE ORDER: {side} {symbol} amount={amount:.6f} (market)")
+            logger.info("Live order placed: %s", order)
+            return {"status": "live_order_placed", "order": order}
         except Exception as e:
-            logger.exception("Failed placing live order: %s", e)
-            await send_message(f"ERROR placing live order: {e}")
+            logger.exception("Error placing live order: %s", e)
+            await send_message(f"Order error: {e}")
             return {"status": "error", "error": str(e)}
