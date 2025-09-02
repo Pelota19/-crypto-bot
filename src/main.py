@@ -1,6 +1,7 @@
 import asyncio
 import logging
-from src.logging_config import *
+from typing import Optional
+import src.logging_config  # noqa: F401 - Import for side effects (configures logging)
 from src.exchange.binance_client import create_binance_exchange
 from src.fetcher import fetch_ohlcv_for_symbol
 from src.strategy.strategy import decide_signal
@@ -9,8 +10,9 @@ from src.notifier.telegram_notifier import send_message
 
 logger = logging.getLogger(__name__)
 
+
 # main orchestration
-async def run_once(symbol: str = None):
+async def run_once(symbol: Optional[str] = None):
     exchange = create_binance_exchange()
     try:
         markets = await exchange.load_markets()
@@ -26,7 +28,9 @@ async def run_once(symbol: str = None):
         logger.info("Selected symbol: %s", symbol)
 
         # Fetch OHLCV (use 1h candle as example)
-        ohlcv = await fetch_ohlcv_for_symbol(exchange, symbol, timeframe="1h", limit=200)
+        ohlcv = await fetch_ohlcv_for_symbol(
+            exchange, symbol, timeframe="1h", limit=200
+        )
         if ohlcv is None or ohlcv.empty:
             logger.warning("No OHLCV data available for %s", symbol)
             await send_message(f"No OHLCV for {symbol} - skipping")
@@ -50,11 +54,13 @@ async def run_once(symbol: str = None):
     finally:
         await exchange.close()
 
+
 async def run_loop(interval_seconds: int = 60 * 60):
     # simple loop that runs run_once every interval_seconds
     while True:
         await run_once()
         await asyncio.sleep(interval_seconds)
+
 
 if __name__ == "__main__":
     # for beginners: to run once:

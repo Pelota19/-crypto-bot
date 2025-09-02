@@ -1,9 +1,14 @@
 import logging
-from src.config import MODE, POSITION_SIZE_PERCENT, STARTING_BALANCE_USDT, DAILY_PROFIT_TARGET_USD, MAX_DAILY_LOSS_USD
+from src.config import (
+    MODE,
+    POSITION_SIZE_PERCENT,
+    STARTING_BALANCE_USDT,
+    DAILY_PROFIT_TARGET_USD,
+    MAX_DAILY_LOSS_USD,
+)
 from src.persistence.sqlite_store import save_order, save_balance
 from src.notifier.telegram_notifier import send_message
-import asyncio
-from datetime import datetime, date
+from datetime import date
 
 logger = logging.getLogger(__name__)
 
@@ -11,6 +16,7 @@ logger = logging.getLogger(__name__)
 _daily_profit = 0.0
 _daily_loss = 0.0
 _last_day = date.today()
+
 
 async def get_balance_simulated() -> float:
     """
@@ -21,6 +27,7 @@ async def get_balance_simulated() -> float:
     # For simplicity: caller can persist balance externally; we log and return starting amount for first tests.
     return STARTING_BALANCE_USDT
 
+
 async def can_trade_today() -> bool:
     global _daily_profit, _daily_loss, _last_day
     today = date.today()
@@ -29,12 +36,17 @@ async def can_trade_today() -> bool:
         _daily_loss = 0.0
         _last_day = today
     if _daily_profit >= DAILY_PROFIT_TARGET_USD:
-        await send_message(f"Daily profit target reached ({_daily_profit} USD). Trading paused for today.")
+        await send_message(
+            f"Daily profit target reached ({_daily_profit} USD). Trading paused for today."
+        )
         return False
     if _daily_loss >= MAX_DAILY_LOSS_USD:
-        await send_message(f"Daily loss limit reached ({_daily_loss} USD). Trading paused for today.")
+        await send_message(
+            f"Daily loss limit reached ({_daily_loss} USD). Trading paused for today."
+        )
         return False
     return True
+
 
 async def manage_position(exchange, symbol: str, signal: str, ohlcv_last_price: float):
     """
@@ -59,20 +71,45 @@ async def manage_position(exchange, symbol: str, signal: str, ohlcv_last_price: 
     side = "buy" if signal == "buy" else "sell"
     if MODE == "paper":
         # simulate execution at last price
-        save_order(symbol, side, float(ohlcv_last_price), float(amount), float(order_value), "filled_paper")
+        save_order(
+            symbol,
+            side,
+            float(ohlcv_last_price),
+            float(amount),
+            float(order_value),
+            "filled_paper",
+        )
         # simple PnL simulation: assume immediate unrealized PnL 0 (we log executed value)
-        await send_message(f"PAPER ORDER: {side} {symbol} amount={amount:.6f} price={ohlcv_last_price:.4f} value_usd={order_value:.2f}")
+        await send_message(
+            f"PAPER ORDER: {side} {symbol} amount={amount:.6f} price={ohlcv_last_price:.4f} value_usd={order_value:.2f}"
+        )
         logger.info("Simulated paper order placed: %s %s", side, symbol)
         # For demonstration, we won't update _daily_profit/_daily_loss until we settle trades (future)
         save_balance(equity)  # snapshot
-        return {"status": "paper_filled", "side": side, "amount": amount, "price": ohlcv_last_price}
+        return {
+            "status": "paper_filled",
+            "side": side,
+            "amount": amount,
+            "price": ohlcv_last_price,
+        }
     else:
         # LIVE mode - attempt to create a market order (simplified example)
         try:
             # note: for binance futures may require params like reduceOnly/leverage; this is a basic example
-            order = await exchange.create_order(symbol=symbol, type="market", side=side, amount=amount)
-            save_order(symbol, side, order.get("price") or ohlcv_last_price, amount, order_value, "filled_live")
-            await send_message(f"LIVE ORDER: {side} {symbol} amount={amount:.6f} (market)")
+            order = await exchange.create_order(
+                symbol=symbol, type="market", side=side, amount=amount
+            )
+            save_order(
+                symbol,
+                side,
+                order.get("price") or ohlcv_last_price,
+                amount,
+                order_value,
+                "filled_live",
+            )
+            await send_message(
+                f"LIVE ORDER: {side} {symbol} amount={amount:.6f} (market)"
+            )
             logger.info("Live order placed: %s", order)
             return {"status": "live_order_placed", "order": order}
         except Exception as e:
