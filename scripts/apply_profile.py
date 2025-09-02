@@ -10,7 +10,9 @@ import logging
 from pathlib import Path
 
 # Add src to path to import modules
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+script_dir = Path(__file__).parent
+repo_root = script_dir.parent
+sys.path.insert(0, str(repo_root))
 
 from src.config.plan_loader import PlanLoader
 

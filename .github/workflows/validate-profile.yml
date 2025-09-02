@@ -1,0 +1,99 @@
+name: Validate Plan Configuration
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'config/plan.yml'
+      - 'src/config/**'
+      - 'src/risk/**'
+      - 'src/universe/**'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'config/plan.yml'
+      - 'src/config/**'
+      - 'src/risk/**' 
+      - 'src/universe/**'
+
+jobs:
+  validate-plan:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Validate plan configuration
+      run: |
+        echo "Testing plan loading and validation..."
+        python -c "
+        from src.config.plan_loader import PlanLoader
+        
+        print('Loading plan configuration...')
+        loader = PlanLoader('config/plan.yml')
+        plan = loader.load_plan()
+        
+        print(f'✅ Plan loaded successfully: {plan.profile_name}')
+        print(f'   Mode: {plan.mode}')
+        print(f'   Universe: {plan.universe.mode}')
+        print(f'   Position size: {plan.risk.position_size_pct}%')
+        print(f'   Leverage: {plan.risk.leverage}x')
+        print(f'   SL/TP: {plan.sl_tp.sl_pct}%/{plan.sl_tp.tp_pct}%')
+        
+        # Test guardrails initialization
+        from src.risk.guardrails import RiskGuardrails
+        guardrails = RiskGuardrails(loader)
+        print(f'✅ Risk guardrails initialized')
+        
+        # Test universe selector initialization  
+        from src.universe.selector import UniverseSelector
+        selector = UniverseSelector(loader)
+        print(f'✅ Universe selector initialized')
+        
+        print('✅ All validation checks passed!')
+        "
+        
+    - name: Test CLI script
+      run: |
+        echo "Testing apply_profile CLI script..."
+        python scripts/apply_profile.py --dry-run
+        echo "✅ CLI script validation passed!"
+        
+    - name: Validate plan syntax
+      run: |
+        echo "Validating YAML syntax..."
+        python -c "
+        import yaml
+        with open('config/plan.yml', 'r') as f:
+            data = yaml.safe_load(f)
+        
+        required_keys = ['profile_name', 'mode', 'universe', 'risk', 'sl_tp', 'execution', 'alerts']
+        for key in required_keys:
+            assert key in data, f'Missing required key: {key}'
+        
+        print('✅ YAML syntax and structure validation passed!')
+        "
+        
+    - name: Test backward compatibility
+      run: |
+        echo "Testing backward compatibility..."
+        # Test that the bot can still start without plan.yml
+        mv config/plan.yml config/plan.yml.backup
+        python -c "
+        from src.config.plan_loader import PlanLoader
+        loader = PlanLoader('config/missing_plan.yml')
+        plan = loader.load_plan()  # Should fallback to defaults
+        print(f'✅ Backward compatibility: defaults loaded when plan missing')
+        "
+        mv config/plan.yml.backup config/plan.yml
+        echo "✅ Backward compatibility validation passed!"
