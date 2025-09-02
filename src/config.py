@@ -23,6 +23,10 @@ POSITION_SIZE_PERCENT = (_raw_pct / 100.0) if _raw_pct >= 1 else _raw_pct
 DAILY_PROFIT_TARGET_USD = float(os.getenv("DAILY_PROFIT_TARGET_USD", "40.0"))
 MAX_DAILY_LOSS_USD = float(os.getenv("MAX_DAILY_LOSS_USD", "100.0"))
 
+# Leverage/Margin (para LIVE en testnet)
+LEVERAGE = int(os.getenv("LEVERAGE", "5"))
+MARGIN_MODE = os.getenv("MARGIN_MODE", "ISOLATED")  # ISOLATED o CROSSED
+
 # Universo y scheduling
 TIMEFRAME = os.getenv("TIMEFRAME", "1m")
 MAX_SYMBOLS = int(os.getenv("MAX_SYMBOLS", "15"))

@@ -4,7 +4,7 @@ import logging
 from src.config import (
     MODE, BINANCE_TESTNET, BINANCE_API_KEY, BINANCE_API_SECRET, STARTING_BALANCE_USDT,
     POSITION_SIZE_PERCENT, DAILY_PROFIT_TARGET_USD, MAX_DAILY_LOSS_USD, TIMEFRAME, MAX_SYMBOLS,
-    MIN_24H_VOLUME_USDT, SLEEP_SECONDS_BETWEEN_CYCLES, LOG_LEVEL
+    MIN_24H_VOLUME_USDT, SLEEP_SECONDS_BETWEEN_CYCLES, LOG_LEVEL, LEVERAGE, MARGIN_MODE
 )
 from src.exchange.binance_client import BinanceFuturesClient
 from src.strategy.strategy import decide_signal
@@ -12,6 +12,7 @@ from src.state import load_state, save_state, reset_if_new_day, can_open_new_tra
 from src.orders.manager import OrderManager
 from src.persistence.sqlite_store import save_balance, _ensure_db
 from src.telegram.console import send_message, poll_commands
+from src.risk.manager import compute_sl_tp
 
 logging.basicConfig(level=getattr(logging, LOG_LEVEL.upper(), logging.INFO),
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -50,6 +51,13 @@ async def trading_loop():
     symbols = ctx.exchange.get_usdt_perp_symbols(MIN_24H_VOLUME_USDT, MAX_SYMBOLS)
     await send_message(f"Universo: {', '.join(symbols[:10])}{'...' if len(symbols) > 10 else ''}")
 
+    # If live mode, set leverage and margin mode for each symbol
+    if MODE == "live":
+        log.info(f"Setting leverage {LEVERAGE} and margin mode {MARGIN_MODE} for live trading")
+        for sym in symbols:
+            ctx.exchange.set_margin_mode(sym, MARGIN_MODE)
+            ctx.exchange.set_leverage(sym, LEVERAGE)
+
     async def commands_poller():
         async def _handle(cmd: str):
             await handle_command(cmd, ctx)
@@ -75,23 +83,33 @@ async def trading_loop():
                 side = "buy" if sig == "buy" else "sell"
                 order = ctx.om.open_position_market(sym, side, POSITION_SIZE_PERCENT, price_hint=px)
 
-                # Gestión simple de salida temporal: esperar un par de segundos y cerrar simulando micro objetivo
-                await asyncio.sleep(2)
-                df2 = ctx.exchange.fetch_ohlcv_df(sym, timeframe=TIMEFRAME, limit=2)
-                if df2.empty:
-                    continue
-                px2 = float(df2["close"].iloc[-1])
-                amount_usd = ctx.get_equity() * POSITION_SIZE_PERCENT
-                gross_pnl = (px2 - px) * (1 if side == "buy" else -1) * (amount_usd / px)
-                fees = amount_usd * 0.0004  # ida+vuelta aprox
-                net_pnl = gross_pnl - fees
+                if MODE == "live":
+                    # Live mode: use bracket orders with SL/TP
+                    sl_price, tp_price = compute_sl_tp(px, side, sl_pct=0.002, tp_pct=0.004)
+                    # Compute amount in base from equity and price
+                    amount = (ctx.get_equity() * POSITION_SIZE_PERCENT) / px
+                    # Place bracket orders
+                    ctx.om.place_brackets(sym, side, amount, sl_price, tp_price)
+                    
+                    await send_message(f"{sym} {side.upper()} @ {px:.2f} | SL {sl_price:.2f} | TP {tp_price:.2f}")
+                else:
+                    # Paper mode: keep current simulated quick exit logic
+                    await asyncio.sleep(2)
+                    df2 = ctx.exchange.fetch_ohlcv_df(sym, timeframe=TIMEFRAME, limit=2)
+                    if df2.empty:
+                        continue
+                    px2 = float(df2["close"].iloc[-1])
+                    amount_usd = ctx.get_equity() * POSITION_SIZE_PERCENT
+                    gross_pnl = (px2 - px) * (1 if side == "buy" else -1) * (amount_usd / px)
+                    fees = amount_usd * 0.0004  # ida+vuelta aprox
+                    net_pnl = gross_pnl - fees
 
-                if MODE == "paper":
                     ctx.equity_usdt += net_pnl
-                ctx.state = update_pnl(ctx.state, net_pnl)
-                save_balance(ctx.get_equity())
+                    ctx.state = update_pnl(ctx.state, net_pnl)
+                    
+                    await send_message(f"{sym} {side.upper()} @ {px:.2f} -> exit {px2:.2f} | PnL: {net_pnl:.2f} USDT | PnL día: {ctx.state.pnl_today:.2f}")
 
-                await send_message(f"{sym} {side.upper()} @ {px:.2f} -> exit {px2:.2f} | PnL: {net_pnl:.2f} USDT | PnL día: {ctx.state.pnl_today:.2f}")
+                save_balance(ctx.get_equity())
 
                 can_trade = can_open_new_trades(ctx.state)
 
