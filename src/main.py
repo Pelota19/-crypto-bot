@@ -1,165 +1,107 @@
+from __future__ import annotations
 import asyncio
 import logging
-from typing import Optional
-import src.logging_config  # noqa: F401 - Import for side effects (configures logging)
-from src.exchange.binance_client import create_binance_exchange
-from src.fetcher import fetch_ohlcv_for_symbol
+from src.config import (
+    MODE, BINANCE_TESTNET, BINANCE_API_KEY, BINANCE_API_SECRET, STARTING_BALANCE_USDT,
+    POSITION_SIZE_PERCENT, DAILY_PROFIT_TARGET_USD, MAX_DAILY_LOSS_USD, TIMEFRAME, MAX_SYMBOLS,
+    MIN_24H_VOLUME_USDT, SLEEP_SECONDS_BETWEEN_CYCLES, LOG_LEVEL
+)
+from src.exchange.binance_client import BinanceFuturesClient
 from src.strategy.strategy import decide_signal
-from src.trade_manager import manage_position, get_balance_simulated
-from src.notifier.telegram_notifier import send_message
+from src.state import load_state, save_state, reset_if_new_day, can_open_new_trades, update_pnl
+from src.orders.manager import OrderManager
+from src.persistence.sqlite_store import save_balance, _ensure_db
+from src.telegram.console import send_message, poll_commands
 
-logger = logging.getLogger(__name__)
+logging.basicConfig(level=getattr(logging, LOG_LEVEL.upper(), logging.INFO),
+                    format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+log = logging.getLogger("main")
 
+class Context:
+    def __init__(self):
+        self.exchange = BinanceFuturesClient(BINANCE_API_KEY, BINANCE_API_SECRET, testnet=BINANCE_TESTNET)
+        self.state = load_state()
+        self.equity_usdt = STARTING_BALANCE_USDT if MODE == "paper" else max(STARTING_BALANCE_USDT, self.exchange.get_balance_usdt())
+        self.om = OrderManager(self.exchange, self.get_equity)
 
-# main orchestration
-async def run_once(symbol: Optional[str] = None):
-    exchange = create_binance_exchange()
-    try:
-        markets = await exchange.load_markets()
-        logger.info("Markets loaded: %d", len(markets))
-        if not symbol:
-            # choose a USDT pair if possible
-            for s in markets.keys():
-                if "USDT" in s:
-                    symbol = s
-                    break
-            if not symbol:
-                symbol = list(markets.keys())[0]
-        logger.info("Selected symbol: %s", symbol)
+    def get_equity(self) -> float:
+        if MODE == "paper":
+            return self.equity_usdt
+        return max(0.0, self.exchange.get_balance_usdt())
 
-        # Fetch OHLCV (use 1h candle as example)
-        ohlcv = await fetch_ohlcv_for_symbol(
-            exchange, symbol, timeframe="1h", limit=200
-        )
-        if ohlcv is None or ohlcv.empty:
-            logger.warning("No OHLCV data available for %s", symbol)
-            await send_message(f"No OHLCV for {symbol} - skipping")
-            return
+async def handle_command(text: str, ctx: Context):
+    if text == "/status":
+        msg = f"Mode: {MODE}\nEquity: {ctx.get_equity():.2f} USDT\nPNL hoy: {ctx.state.pnl_today:.2f}\nTarget: {DAILY_PROFIT_TARGET_USD:.2f} | MaxLoss: {MAX_DAILY_LOSS_USD:.2f}\nPausado: {ctx.state.paused}"
+        await send_message(msg)
+    elif text == "/pause":
+        ctx.state.paused = True
+        save_state(ctx.state)
+        await send_message("Bot pausado.")
+    elif text == "/resume":
+        ctx.state.paused = False
+        save_state(ctx.state)
+        await send_message("Bot reanudado.")
 
-        signal = decide_signal(ohlcv)
-        logger.info("Signal for %s: %s", symbol, signal)
-        # price is last close
-        last_price = float(ohlcv["close"].iloc[-1])
+async def trading_loop():
+    _ensure_db()
+    ctx = Context()
 
-        # optional: check simulated balance
-        balance = await get_balance_simulated()
-        logger.info("Simulated balance: %s", balance)
+    await send_message("🤖 Bot iniciado en testnet.")
+    symbols = ctx.exchange.get_usdt_perp_symbols(MIN_24H_VOLUME_USDT, MAX_SYMBOLS)
+    await send_message(f"Universo: {', '.join(symbols[:10])}{'...' if len(symbols) > 10 else ''}")
 
-        result = await manage_position(exchange, symbol, signal, last_price)
-        logger.info("manage_position result: %s", result)
+    async def commands_poller():
+        async def _handle(cmd: str):
+            await handle_command(cmd, ctx)
+        await poll_commands(_handle)
 
-    except Exception as e:
-        logger.exception("Error in run_once: %s", e)
-        await send_message(f"Bot error: {e}")
-    finally:
-        await exchange.close()
-
-
-async def run_loop(interval_seconds: int = 60 * 60):
-    """Run the bot in a loop with error recovery."""
-    consecutive_errors = 0
-    max_consecutive_errors = 5
+    asyncio.create_task(commands_poller())
 
     while True:
         try:
-            await run_once()
-            consecutive_errors = 0  # Reset on successful run
+            ctx.state = reset_if_new_day(ctx.state)
+            can_trade = can_open_new_trades(ctx.state)
+
+            for sym in symbols:
+                df = ctx.exchange.fetch_ohlcv_df(sym, timeframe=TIMEFRAME, limit=200)
+                if df.empty or len(df) < 30:
+                    continue
+
+                px = float(df["close"].iloc[-1])
+                sig = decide_signal(df)
+                if not can_trade or sig == "hold":
+                    continue
+
+                side = "buy" if sig == "buy" else "sell"
+                order = ctx.om.open_position_market(sym, side, POSITION_SIZE_PERCENT, price_hint=px)
+
+                # Gestión simple de salida temporal: esperar un par de segundos y cerrar simulando micro objetivo
+                await asyncio.sleep(2)
+                df2 = ctx.exchange.fetch_ohlcv_df(sym, timeframe=TIMEFRAME, limit=2)
+                if df2.empty:
+                    continue
+                px2 = float(df2["close"].iloc[-1])
+                amount_usd = ctx.get_equity() * POSITION_SIZE_PERCENT
+                gross_pnl = (px2 - px) * (1 if side == "buy" else -1) * (amount_usd / px)
+                fees = amount_usd * 0.0004  # ida+vuelta aprox
+                net_pnl = gross_pnl - fees
+
+                if MODE == "paper":
+                    ctx.equity_usdt += net_pnl
+                ctx.state = update_pnl(ctx.state, net_pnl)
+                save_balance(ctx.get_equity())
+
+                await send_message(f"{sym} {side.upper()} @ {px:.2f} -> exit {px2:.2f} | PnL: {net_pnl:.2f} USDT | PnL día: {ctx.state.pnl_today:.2f}")
+
+                can_trade = can_open_new_trades(ctx.state)
+
+            await asyncio.sleep(SLEEP_SECONDS_BETWEEN_CYCLES)
         except Exception as e:
-            consecutive_errors += 1
-            logger.exception(
-                "Error in run_loop iteration %d: %s", consecutive_errors, e
-            )
-
-            if consecutive_errors >= max_consecutive_errors:
-                error_msg = (
-                    f"Too many consecutive errors ({consecutive_errors}). Stopping bot."
-                )
-                logger.critical(error_msg)
-                try:
-                    await send_message(error_msg)
-                except Exception:
-                    pass  # Don't fail if telegram fails
-                break
-
-            # Wait a bit longer after errors
-            error_sleep = min(interval_seconds * 2, 300)  # Max 5 minutes
-            logger.info("Waiting %d seconds before retry...", error_sleep)
-            await asyncio.sleep(error_sleep)
-            continue
-
-        await asyncio.sleep(interval_seconds)
-
-
-async def health_check():
-    """Basic health check for bot components."""
-    logger.info("Running health check...")
-
-    try:
-        # Test exchange connection
-        exchange = create_binance_exchange()
-        try:
-            # Try to get server time (lightweight test)
-            server_time = await exchange.fetch_time()
-            logger.info("Exchange connection: OK (server time: %s)", server_time)
-        finally:
-            await exchange.close()
-    except Exception as e:
-        logger.warning("Exchange connection: FAILED (%s)", e)
-
-    # Test balance simulation
-    try:
-        balance = await get_balance_simulated()
-        logger.info("Balance simulation: OK (%s)", balance)
-    except Exception as e:
-        logger.warning("Balance simulation: FAILED (%s)", e)
-
-    # Test telegram (if configured)
-    try:
-        await send_message("🔧 Bot health check completed")
-        logger.info("Telegram notifications: OK")
-    except Exception as e:
-        logger.warning("Telegram notifications: FAILED (%s)", e)
-
+            log.exception(f"Loop error: {e}")
+            await asyncio.sleep(2)
 
 if __name__ == "__main__":
-    # Run configuration validation first
-    from validate_config import validate_config
-
-    issues, warnings = validate_config()
-
-    if issues:
-        logger.critical("Configuration issues found:")
-        for issue in issues:
-            logger.critical("  • %s", issue)
-        exit(1)
-
-    if warnings:
-        logger.warning("Configuration warnings:")
-        for warning in warnings:
-            logger.warning("  • %s", warning)
-
-    # Run health check and then main execution
     try:
-        logger.info("Starting crypto bot...")
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-        # Run health check first
-        loop.run_until_complete(health_check())
-
-        # For beginners: to run once:
-        # python -m src.main
-        loop.run_until_complete(run_once())
-
-        # Uncomment to run in loop mode:
-        # loop.run_until_complete(run_loop())
-
+        asyncio.run(trading_loop())
     except KeyboardInterrupt:
-        logger.info("Bot stopped by user")
-    except Exception as e:
-        logger.exception("Fatal error: %s", e)
-        exit(1)
-    finally:
-        if "loop" in locals():
-            loop.close()
-        logger.info("Bot shutdown complete")
+        log.info("Stopping...")
