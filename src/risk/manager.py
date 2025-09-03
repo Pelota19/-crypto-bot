@@ -1,27 +1,41 @@
+"""
+Risk manager utilities.
+- Enforce CAPITAL_MAX_USDT cap
+- Provide simple position sizing helpers
+"""
 from __future__ import annotations
-try:
-    from src.config import CAPITAL_MAX_USDT
-except ImportError:
-    CAPITAL_MAX_USDT = 2000.0
+from typing import Optional
+from config.settings import CAPITAL_MAX_USDT, MAX_RISK_PER_TRADE
+from src.state import bot_state
 
-def position_size_in_base(equity_usdt: float, pct: float, price: float) -> float:
-    # pct expresado 0..1
-    # Cap the equity at CAPITAL_MAX_USDT for position sizing
-    capped_equity = min(equity_usdt, CAPITAL_MAX_USDT)
-    usd = max(0.0, capped_equity * max(0.0, min(1.0, pct)))
-    if price <= 0:
+def cap_equity(equity_usdt: float) -> float:
+    """Cap the usable equity to CAPITAL_MAX_USDT."""
+    return min(max(0.0, equity_usdt), float(CAPITAL_MAX_USDT))
+
+def usd_to_base(amount_usd: float, price: float) -> float:
+    """Convert USD value to base asset units (e.g., USD -> BTC)."""
+    if price <= 0 or amount_usd <= 0:
         return 0.0
-    return usd / price
+    return amount_usd / price
+
+def position_size_from_risk(equity_usdt: float, risk_pct: float) -> float:
+    """
+    Given equity and risk percentage (0..100), return USD allocation for a trade.
+    Ensures we don't exceed the capital cap.
+    """
+    usable = cap_equity(equity_usdt)
+    pct = max(0.0, min(100.0, float(risk_pct)))
+    return usable * (pct / 100.0)
 
 class RiskManager:
-    """Placeholder risk manager."""
-    
+    """Simple Risk Manager placeholder with basic checks."""
+
     def can_open_new_trade(self, pair: str) -> bool:
-        """Check if a new trade can be opened for the pair."""
-        # Placeholder implementation
+        """Placeholder: don't open if bot is paused or we've reached max open trades (caller checks LIMIT)."""
+        if bot_state.is_paused:
+            return False
         return True
-    
-    def calculate_position_size(self) -> float:
-        """Calculate position size in USD."""
-        # Placeholder implementation
-        return 100.0
+
+    def calculate_position_size_usd(self, equity_usdt: float) -> float:
+        """Return USD to allocate based on configured MAX_RISK_PER_TRADE and capital cap."""
+        return position_size_from_risk(equity_usdt, MAX_RISK_PER_TRADE)
