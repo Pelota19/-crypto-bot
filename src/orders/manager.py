@@ -34,7 +34,7 @@ class OrderManager:
         return order
 
     def place_brackets(self, symbol: str, entry_side: str, amount: float, sl_price: float, tp_price: float):
-        """Place SL and TP bracket orders using exchange client's reduce-only methods."""
+        """Place SL and TP bracket orders as conditional reduceOnly orders."""
         try:
             # Stop Loss using exchange client method
             sl_side = "sell" if entry_side == "buy" else "buy"
@@ -42,8 +42,6 @@ class OrderManager:
             if sl_order:
                 save_order(symbol, sl_side, sl_price, amount, 0.0, sl_order.get("status", "unknown"))
                 log.info(f"Placed SL bracket: {sl_side} {symbol} @ {sl_price}")
-            else:
-                log.warning(f"SL order failed (amount too small): {symbol} {amount}")
 
             # Take Profit using exchange client method
             tp_side = "sell" if entry_side == "buy" else "buy"
@@ -51,8 +49,6 @@ class OrderManager:
             if tp_order:
                 save_order(symbol, tp_side, tp_price, amount, 0.0, tp_order.get("status", "unknown"))
                 log.info(f"Placed TP bracket: {tp_side} {symbol} @ {tp_price}")
-            else:
-                log.warning(f"TP order failed (amount too small): {symbol} {amount}")
 
             return {"sl_order": sl_order, "tp_order": tp_order}
         except Exception as e:

@@ -4,7 +4,8 @@ import logging
 from src.config import (
     MODE, BINANCE_TESTNET, BINANCE_API_KEY, BINANCE_API_SECRET, STARTING_BALANCE_USDT,
     POSITION_SIZE_PERCENT, DAILY_PROFIT_TARGET_USD, MAX_DAILY_LOSS_USD, TIMEFRAME, MAX_SYMBOLS,
-    MIN_24H_VOLUME_USDT, SLEEP_SECONDS_BETWEEN_CYCLES, LOG_LEVEL, LEVERAGE, MARGIN_MODE, CAPITAL_MAX_USDT
+    MIN_24H_VOLUME_USDT, SLEEP_SECONDS_BETWEEN_CYCLES, LOG_LEVEL, LEVERAGE, MARGIN_MODE,
+    CAPITAL_MAX_USDT
 )
 from src.exchange.binance_client import BinanceFuturesClient
 from src.strategy.strategy import decide_trade
@@ -26,14 +27,13 @@ class Context:
         self.om = OrderManager(self.exchange, self.get_equity)
 
     def get_equity(self) -> float:
-        """Get equity capped to CAPITAL_MAX_USDT in live mode, or virtual equity in paper mode."""
         if MODE == "paper":
-            return self.equity_usdt
-        return min(CAPITAL_MAX_USDT, max(0.0, self.exchange.get_balance_usdt()))
+            return min(self.equity_usdt, CAPITAL_MAX_USDT)
+        return min(max(0.0, self.exchange.get_balance_usdt()), CAPITAL_MAX_USDT)
 
 async def handle_command(text: str, ctx: Context):
     if text == "/status":
-        msg = f"Mode: {MODE}\nEquity: {ctx.get_equity():.2f} USDT\nPNL hoy: {ctx.state.pnl_today:.2f}\nTarget: {DAILY_PROFIT_TARGET_USD:.2f} | MaxLoss: {MAX_DAILY_LOSS_USD:.2f}\nPausado: {ctx.state.paused}"
+        msg = f"Mode: {MODE}\nEquity: {ctx.get_equity():.2f} USDT (capped at {CAPITAL_MAX_USDT:.0f})\nPNL hoy: {ctx.state.pnl_today:.2f}\nTarget: {DAILY_PROFIT_TARGET_USD:.2f} | MaxLoss: {MAX_DAILY_LOSS_USD:.2f}\nPausado: {ctx.state.paused}"
         await send_message(msg)
     elif text == "/pause":
         ctx.state.paused = True
@@ -77,57 +77,53 @@ async def trading_loop():
                     continue
 
                 px = float(df["close"].iloc[-1])
-                trade_decision = decide_trade(df)
                 
-                signal = trade_decision["signal"]
-                if not can_trade or signal == "hold":
+                # Use the new decide_trade function to get signal, sl, tp, and score
+                trade_decision = decide_trade(df)
+                sig = trade_decision["signal"]
+                score = trade_decision["score"]
+                
+                if not can_trade or sig == "hold":
                     continue
 
                 # Check if trade is feasible (meets minQty requirements)
                 notional_usd = ctx.get_equity() * POSITION_SIZE_PERCENT
                 if not ctx.exchange.is_trade_feasible(sym, notional_usd, px):
-                    log.warning(f"{sym}: Trade not feasible with notional ${notional_usd:.2f} @ price {px:.2f}")
+                    log.info(f"Skipping {sym}: trade below minQty (notional: {notional_usd:.2f} USD)")
                     continue
 
-                side = "buy" if signal == "buy" else "sell"
-                sl_price = float(trade_decision["sl"])
-                tp_price = float(trade_decision["tp"])
-                score = float(trade_decision["score"])
+                side = "buy" if sig == "buy" else "sell"
+                order = ctx.om.open_position_market(sym, side, POSITION_SIZE_PERCENT, price_hint=px)
 
-                try:
-                    order = ctx.om.open_position_market(sym, side, POSITION_SIZE_PERCENT, price_hint=px)
-                    if not order:
-                        log.warning(f"{sym}: Failed to open position (likely minQty issue)")
+                if MODE == "live":
+                    # Live mode: use SL/TP from strategy
+                    sl_price = trade_decision["sl"]
+                    tp_price = trade_decision["tp"]
+                    # Compute amount in base from equity and price
+                    amount = (ctx.get_equity() * POSITION_SIZE_PERCENT) / px
+                    # Place bracket orders
+                    ctx.om.place_brackets(sym, side, amount, sl_price, tp_price)
+                    
+                    await send_message(f"{sym} {side.upper()} @ {px:.2f} | SL {sl_price:.2f} | TP {tp_price:.2f} | Score: {score:.3f}")
+                else:
+                    # Paper mode: keep current simulated quick exit logic
+                    await asyncio.sleep(2)
+                    df2 = ctx.exchange.fetch_ohlcv_df(sym, timeframe=TIMEFRAME, limit=2)
+                    if df2.empty:
                         continue
+                    px2 = float(df2["close"].iloc[-1])
+                    amount_usd = ctx.get_equity() * POSITION_SIZE_PERCENT
+                    gross_pnl = (px2 - px) * (1 if side == "buy" else -1) * (amount_usd / px)
+                    fees = amount_usd * 0.0004  # ida+vuelta aprox
+                    net_pnl = gross_pnl - fees
 
-                    if MODE == "live":
-                        # Live mode: use bracket orders with dynamic SL/TP from strategy
-                        amount = (ctx.get_equity() * POSITION_SIZE_PERCENT) / px
-                        ctx.om.place_brackets(sym, side, amount, sl_price, tp_price)
-                        
-                        await send_message(f"🎯 {sym} {side.upper()} @ {px:.2f} | Score: {score:.3f} | SL {sl_price:.2f} | TP {tp_price:.2f}")
-                    else:
-                        # Paper mode: keep current simulated quick exit logic
-                        await asyncio.sleep(2)
-                        df2 = ctx.exchange.fetch_ohlcv_df(sym, timeframe=TIMEFRAME, limit=2)
-                        if df2.empty:
-                            continue
-                        px2 = float(df2["close"].iloc[-1])
-                        amount_usd = ctx.get_equity() * POSITION_SIZE_PERCENT
-                        gross_pnl = (px2 - px) * (1 if side == "buy" else -1) * (amount_usd / px)
-                        fees = amount_usd * 0.0004  # ida+vuelta aprox
-                        net_pnl = gross_pnl - fees
-
-                        ctx.equity_usdt += net_pnl
-                        ctx.state = update_pnl(ctx.state, net_pnl)
-                        
-                        await send_message(f"{sym} {side.upper()} @ {px:.2f} -> exit {px2:.2f} | PnL: {net_pnl:.2f} USDT | PnL día: {ctx.state.pnl_today:.2f}")
-
-                except Exception as e:
-                    log.warning(f"{sym}: Order execution failed: {e}")
-                    continue
+                    ctx.equity_usdt += net_pnl
+                    ctx.state = update_pnl(ctx.state, net_pnl)
+                    
+                    await send_message(f"{sym} {side.upper()} @ {px:.2f} -> exit {px2:.2f} | PnL: {net_pnl:.2f} USDT | PnL día: {ctx.state.pnl_today:.2f} | Score: {score:.3f}")
 
                 save_balance(ctx.get_equity())
+
                 can_trade = can_open_new_trades(ctx.state)
 
             await asyncio.sleep(SLEEP_SECONDS_BETWEEN_CYCLES)
