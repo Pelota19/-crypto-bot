@@ -1,4 +1,6 @@
-# Wrapper async para Binance (ccxt) con soporte sandbox/testnet y modo DRY_RUN.
+# src/exchange/binance_client.py
+# Wrapper async para Binance (ccxt) con soporte testnet oficial y modo DRY_RUN.
+
 import time
 import logging
 import asyncio
@@ -10,8 +12,15 @@ from config.settings import API_KEY, API_SECRET, USE_TESTNET, DRY_RUN
 logger = logging.getLogger(__name__)
 
 class BinanceClient:
-    def __init__(self, api_key: str = API_KEY, api_secret: str = API_SECRET, use_testnet: bool = USE_TESTNET, dry_run: bool = DRY_RUN):
+    def __init__(
+        self,
+        api_key: str = API_KEY,
+        api_secret: str = API_SECRET,
+        use_testnet: bool = USE_TESTNET,
+        dry_run: bool = DRY_RUN
+    ):
         self.dry_run = dry_run
+
         opts = {'defaultType': 'future'}
         self.exchange = ccxt.binance({
             'apiKey': api_key,
@@ -19,14 +28,17 @@ class BinanceClient:
             'enableRateLimit': True,
             'options': opts,
         })
-        if use_testnet:
-            try:
-                # ccxt ofrece sandbox mode para muchos exchanges
-                self.exchange.set_sandbox_mode(True)
-                logger.info("Binance sandbox mode enabled")
-            except Exception:
-                logger.warning("No se pudo habilitar sandbox mode (ccxt build puede no soportarlo)")
 
+        if use_testnet:
+            # Configuración para Testnet oficial Binance Futures
+            self.exchange.options['defaultType'] = 'future'
+            self.exchange.urls['api'] = {
+                'public': 'https://testnet.binancefuture.com/fapi/v1',
+                'private': 'https://testnet.binancefuture.com/fapi/v1'
+            }
+            logger.info("Binance testnet mode enabled")
+
+    # --- Datos de mercado ---
     async def fetch_ohlcv(self, symbol: str, timeframe: str = "1h", limit: int = 200):
         try:
             raw = await self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=None, limit=limit)
@@ -42,6 +54,7 @@ class BinanceClient:
             logger.exception("fetch_ticker error for %s: %s", symbol, e)
             return None
 
+    # --- Órdenes ---
     async def create_market_order(self, symbol: str, side: str, amount: float) -> dict:
         if self.dry_run:
             logger.info("DRY_RUN market order %s %s %f", symbol, side, amount)
@@ -83,6 +96,7 @@ class BinanceClient:
             logger.exception("cancel_order error: %s", e)
             raise
 
+    # --- Balance ---
     async def fetch_balance(self) -> dict:
         if self.dry_run:
             return {"USDT": {"free": 10000.0, "used": 0.0, "total": 10000.0}}
@@ -93,6 +107,7 @@ class BinanceClient:
             logger.exception("fetch_balance error: %s", e)
             return {}
 
+    # --- Cierre del cliente ---
     async def close(self):
         try:
             await self.exchange.close()
