@@ -1,3 +1,4 @@
+# Wrapper async para Binance (ccxt) con soporte testnet real (futures) y modo DRY_RUN.
 import time
 import logging
 import asyncio
@@ -9,22 +10,10 @@ from config.settings import API_KEY, API_SECRET, USE_TESTNET, DRY_RUN
 logger = logging.getLogger(__name__)
 
 class BinanceClient:
-    """
-    Wrapper async para ccxt.binance apuntando al TESTNET de Binance Futures (USDT-M).
-    No usa set_sandbox_mode; en su lugar sobrescribe solo las URLs fapi al host de testnet.
-    Incluye modo dry-run para simulación.
-    """
-
-    def __init__(
-        self,
-        api_key: str = API_KEY,
-        api_secret: str = API_SECRET,
-        use_testnet: bool = USE_TESTNET,
-        dry_run: bool = DRY_RUN,
-    ):
+    def __init__(self, api_key: str = API_KEY, api_secret: str = API_SECRET,
+                 use_testnet: bool = USE_TESTNET, dry_run: bool = DRY_RUN):
         self.dry_run = dry_run
-        # Forzamos defaultType a 'future' para usar FAPI (USDT-M)
-        opts = {"defaultType": "future"}
+        opts = {"defaultType": "future"}  # fuerza FAPI
         self.exchange = ccxt.binance({
             "apiKey": api_key,
             "secret": api_secret,
@@ -34,14 +23,24 @@ class BinanceClient:
 
         if use_testnet:
             # Conectar al TESTNET de Binance Futures (USDT-M)
-            # Usamos sólo el host base; ccxt construye los paths (/fapi/v1, etc.) internamente.
+            # Las rutas deben incluir '/fapi/v1' para que CCXT construya correctamente endpoints como
+            # https://testnet.binancefuture.com/fapi/v1/exchangeInfo
             api_urls = dict(self.exchange.urls.get("api", {}))
             api_urls.update({
-                "fapiPublic": "https://testnet.binancefuture.com",
-                "fapiPrivate": "https://testnet.binancefuture.com",
-                "fapiData": "https://testnet.binancefuture.com",
+                # Poner aquí la ruta completa base+prefijo para FAPI testnet
+                "fapiPublic": "https://testnet.binancefuture.com/fapi/v1",
+                "fapiPrivate": "https://testnet.binancefuture.com/fapi/v1",
+                "fapiData": "https://testnet.binancefuture.com/fapi/v1",
+                # Además, asegurar las claves 'public'/'private' que CCXT puede usar
+                # al construir ciertas peticiones cuando defaultType='future'.
+                "public": "https://testnet.binancefuture.com/fapi/v1",
+                "private": "https://testnet.binancefuture.com/fapi/v1",
             })
-            # No modificamos dapiPublic/dapiPrivate (dejamos como están en mainnet)
+            # No tocar dapiPublic/dapiPrivate (dejarlas en mainnet) — así evitamos errores con delivery futures
+            # si quisieras forzarlas a mainnet explícitamente podrías hacer:
+            # api_urls.setdefault("dapiPublic", "https://api.binance.com/dapi/v1")
+            # api_urls.setdefault("dapiPrivate", "https://api.binance.com/dapi/v1")
+
             self.exchange.urls["api"] = api_urls
 
             # Asegurar defaultType/futures
@@ -74,7 +73,6 @@ class BinanceClient:
             }
         try:
             params = params or {}
-            # Para futures por ejemplo puedes querer pasar params={"reduceOnly": False} según tu lógica
             return await self.exchange.create_order(symbol, "market", side, amount, None, params)
         except Exception as e:
             logger.exception("create_market_order failed: %s", e)
