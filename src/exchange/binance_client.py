@@ -68,13 +68,48 @@ class BinanceFuturesClient:
             log.warning(f"{sym}: price_adjust failed: {e}")
             return price
 
-    def is_trade_feasible(self, symbol: str, notional_usd: float, last_price: float) -> bool:
-        """Chequea si con ese notional se alcanza minQty del símbolo."""
+    def is_trade_feasible(self, symbol: str, notional_usd: float, last_price: float) -> tuple[bool, str]:
+        """
+        Chequea si con ese notional se puede ejecutar un trade del símbolo.
+        
+        Returns:
+            (bool, str): (is_feasible, reason)
+            - True, "OK" if feasible
+            - False, reason if not feasible
+        """
         if last_price <= 0:
-            return False
-        raw_amt = notional_usd / last_price
-        adj = self.amount_adjust(symbol, raw_amt)
-        return adj > 0
+            return False, "Invalid price <= 0"
+        
+        try:
+            # Get market info
+            sym = self._normalize_symbol(symbol)
+            market = self.exchange.market(sym)
+            
+            # Calculate amount
+            raw_amt = notional_usd / last_price
+            adj_amt = self.amount_adjust(symbol, raw_amt)
+            
+            if adj_amt <= 0:
+                # Check specific reasons
+                limits = market.get("limits", {})
+                min_amount = limits.get("amount", {}).get("min")
+                min_cost = limits.get("cost", {}).get("min")
+                
+                if min_amount and raw_amt < min_amount:
+                    return False, f"Amount {raw_amt:.8f} < minQty {min_amount}"
+                if min_cost and notional_usd < min_cost:
+                    return False, f"Notional {notional_usd:.2f} < minNotional {min_cost}"
+                
+                return False, "Amount too small after precision adjustment"
+            
+            # Check if exchange supports quoteOrderQty (more flexible)
+            if hasattr(self.exchange, 'has') and self.exchange.has.get('createMarketOrderRequiresPriceForQuoteOrderQty', False):
+                return True, "OK (quoteOrderQty supported)"
+            
+            return True, "OK"
+            
+        except Exception as e:
+            return False, f"Market check failed: {str(e)}"
 
     def get_usdt_perp_symbols(self, min_volume_usdt: float, limit: int) -> List[str]:
         # Usamos fetch_tickers y filtramos swaps USDT
@@ -161,6 +196,39 @@ class BinanceFuturesClient:
             "timeInForce": "GTC",
         }
         return self.exchange.create_order(symbol=sym, type="TAKE_PROFIT_MARKET", side=side, amount=adj_amount, params=params)
+
+    def get_ticker_info(self, symbol: str) -> dict:
+        """
+        Get ticker information for a symbol, including price and volume.
+        Returns dict with 'last_price', 'volume_24h_usd', etc.
+        """
+        try:
+            sym = self._normalize_symbol(symbol)
+            ticker = self.exchange.fetch_ticker(sym)
+            
+            last_price = ticker.get('last', 0.0) or ticker.get('close', 0.0)
+            
+            # Try to get 24h volume in USD
+            volume_usd = 0.0
+            if ticker.get('quoteVolume'):
+                volume_usd = float(ticker['quoteVolume'])
+            elif ticker.get('baseVolume') and last_price:
+                volume_usd = float(ticker['baseVolume']) * last_price
+            
+            return {
+                'symbol': sym,
+                'last_price': float(last_price) if last_price else 0.0,
+                'volume_24h_usd': volume_usd,
+                'ticker': ticker
+            }
+        except Exception as e:
+            log.warning(f"Failed to get ticker for {symbol}: {e}")
+            return {
+                'symbol': symbol,
+                'last_price': 0.0,
+                'volume_24h_usd': 0.0,
+                'ticker': {}
+            }
 
     def set_leverage(self, symbol: str, leverage: int) -> bool:
         """Set leverage for a symbol. Returns True on success, False on failure."""

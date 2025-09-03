@@ -44,6 +44,11 @@ DAILY_RESET_HOUR_UTC = int(os.getenv("DAILY_RESET_HOUR_UTC", "0"))  # 00:00 UTC
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
+# Top-K symbol selection
+MAX_ACTIVE_SYMBOLS = int(os.getenv("MAX_ACTIVE_SYMBOLS", "5"))
+MIN_NOTIONAL_USD = float(os.getenv("MIN_NOTIONAL_USD", "10.0"))
+TOP_K_SELECTION = _bool(os.getenv("TOP_K_SELECTION", "true"), True)
+
 # Miscelánea
 # Por defecto WARNING para no spamear la shell. Telegram será el canal principal.
 LOG_LEVEL = os.getenv("LOG_LEVEL", "WARNING")
