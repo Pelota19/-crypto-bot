@@ -1,6 +1,6 @@
 from __future__ import annotations
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import ccxt
 import pandas as pd
 
@@ -30,17 +30,51 @@ class BinanceFuturesClient:
         markets = self.exchange.markets or {}
         if symbol in markets:
             return symbol
-        # Intentos comunes de normalización para USDM
         if ":USDT" not in symbol and "/USDT" in symbol:
             candidate = symbol + ":USDT"
             if candidate in markets:
                 return candidate
-        # También intentar quitar sufijo si vino con :USDT y no existe
         if ":USDT" in symbol:
             candidate = symbol.replace(":USDT", "")
             if candidate in markets:
                 return candidate
         return symbol
+
+    def _market(self, symbol: str):
+        sym = self._normalize_symbol(symbol)
+        return self.exchange.market(sym)
+
+    def amount_adjust(self, symbol: str, amount: float) -> float:
+        """Redondea amount al step/precision y valida contra minQty. Devuelve 0 si queda < min."""
+        sym = self._normalize_symbol(symbol)
+        try:
+            m = self.exchange.market(sym)
+            min_qty = (m.get("limits", {}).get("amount", {}) or {}).get("min", None)
+            amt = max(0.0, float(amount))
+            amt = float(self.exchange.amount_to_precision(sym, amt))
+            if min_qty is not None and amt < float(min_qty or 0.0):
+                return 0.0
+            return amt
+        except Exception as e:
+            log.warning(f"{sym}: amount_adjust failed: {e}")
+            return 0.0
+
+    def price_adjust(self, symbol: str, price: float) -> float:
+        """Redondea precio a tickSize/precision."""
+        sym = self._normalize_symbol(symbol)
+        try:
+            return float(self.exchange.price_to_precision(sym, price))
+        except Exception as e:
+            log.warning(f"{sym}: price_adjust failed: {e}")
+            return price
+
+    def is_trade_feasible(self, symbol: str, notional_usd: float, last_price: float) -> bool:
+        """Chequea si con ese notional se alcanza minQty del símbolo."""
+        if last_price <= 0:
+            return False
+        raw_amt = notional_usd / last_price
+        adj = self.amount_adjust(symbol, raw_amt)
+        return adj > 0
 
     def get_usdt_perp_symbols(self, min_volume_usdt: float, limit: int) -> List[str]:
         # Usamos fetch_tickers y filtramos swaps USDT
@@ -92,10 +126,41 @@ class BinanceFuturesClient:
             log.warning(f"fetch_balance failed: {e}")
             return 0.0
 
-    def market_order(self, symbol: str, side: str, amount: float, reduce_only: bool = False) -> Dict[str, Any]:
+    def market_order(self, symbol: str, side: str, amount: float, reduce_only: bool = False, price_hint: Optional[float] = None) -> Dict[str, Any]:
         sym = self._normalize_symbol(symbol)
+        adj = self.amount_adjust(sym, amount)
+        if adj <= 0:
+            raise ValueError(f"{sym}: computed amount {amount:.8f} is below min qty")
         params = {"reduceOnly": True} if reduce_only else {}
-        return self.exchange.create_order(symbol=sym, type="market", side=side, amount=amount, params=params)
+        return self.exchange.create_order(symbol=sym, type="market", side=side, amount=adj, params=params)
+
+    def stop_market_reduce_only(self, symbol: str, side: str, amount: float, stop_price: float) -> Optional[Dict[str, Any]]:
+        sym = self._normalize_symbol(symbol)
+        adj_amount = self.amount_adjust(sym, amount)
+        if adj_amount <= 0:
+            return None
+        sp = self.price_adjust(sym, stop_price)
+        params = {
+            "reduceOnly": True,
+            "stopPrice": sp,
+            "workingType": "CONTRACT_PRICE",
+            "timeInForce": "GTC",
+        }
+        return self.exchange.create_order(symbol=sym, type="STOP_MARKET", side=side, amount=adj_amount, params=params)
+
+    def take_profit_market_reduce_only(self, symbol: str, side: str, amount: float, stop_price: float) -> Optional[Dict[str, Any]]:
+        sym = self._normalize_symbol(symbol)
+        adj_amount = self.amount_adjust(sym, amount)
+        if adj_amount <= 0:
+            return None
+        sp = self.price_adjust(sym, stop_price)
+        params = {
+            "reduceOnly": True,
+            "stopPrice": sp,
+            "workingType": "CONTRACT_PRICE",
+            "timeInForce": "GTC",
+        }
+        return self.exchange.create_order(symbol=sym, type="TAKE_PROFIT_MARKET", side=side, amount=adj_amount, params=params)
 
     def set_leverage(self, symbol: str, leverage: int) -> bool:
         """Set leverage for a symbol. Returns True on success, False on failure."""
