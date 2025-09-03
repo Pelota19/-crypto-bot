@@ -1,203 +1,233 @@
-# Crypto Scalping Bot with AI Meta-Scorer
+# AI-Assisted Crypto Scalping Bot
 
-Modern scalping bot for cryptocurrency futures trading with lightweight AI scoring, risk management, and Telegram integration. Designed for **Binance Futures (USDM) testnet** with comprehensive position sizing, stop-loss/take-profit handling, and daily profit targets.
+A modern, AI-assisted cryptocurrency scalping bot designed for Binance Futures (USDM). Features lightweight AI meta-scoring, capital management, risk controls, and Telegram-based monitoring.
 
-## 🚀 Features
+## 🚀 Key Features
 
-- **AI-Assisted Scalping**: SimpleMetaScorer combines EMA, RSI, VWAP, ATR, and micro-trend features into a [-1,1] score
-- **Capital Management**: Enforced capital cap of 2000 USDT for position sizing regardless of actual balance
-- **Daily Profit Targets**: Stop opening new trades after +50 USD daily profit or maximum daily loss
-- **Comprehensive Risk Management**: Dynamic SL/TP based on ATR with min/max bounds
-- **Telegram Integration**: Real-time notifications and remote control (/status, /pause, /resume)
-- **Exchange Integration**: Full Binance Futures support with testnet capability
-- **Position Management**: Automatic bracket orders (SL/TP) as conditional reduceOnly orders
-- **Logging Control**: Silent shell logs (WARNING level) with Telegram as primary reporting channel
+- **AI-Assisted Trading**: Lightweight meta-scorer combines multiple technical indicators for enhanced decision making
+- **Modern Scalping Strategy**: EMA9/EMA21 crossovers, RSI(14), ATR(14), VWAP(30), and micro-trend analysis
+- **Capital Management**: Enforced 2000 USDT capital cap for position sizing, regardless of actual balance
+- **Daily Profit Targets**: Stops opening new trades after reaching +50 USD daily profit target
+- **Risk Management**: Dynamic SL/TP based on ATR, respects market minQty and stepSize constraints
+- **Testnet-First**: Designed for Binance Futures testnet with explicit mainnet warnings
+- **Telegram Integration**: Complete bot control and notifications via Telegram
+- **Quiet Operation**: LOG_LEVEL WARNING by default - Telegram is the primary interface
 
-## 📁 Structure
+## 📁 Project Structure
 
 ```
-src/
-├── config.py           # Centralized configuration with environment variables
-├── ai/
-│   └── scorer.py       # SimpleMetaScorer with persistent weights
-├── strategy/
-│   └── strategy.py     # Technical analysis and trade decision logic
-├── exchange/
-│   └── binance_client.py  # Binance Futures API wrapper with testnet support
-├── orders/
-│   └── manager.py      # Order execution and bracket placement
-├── risk/
-│   └── manager.py      # Position sizing and risk calculations
-├── state.py            # Daily PnL tracking and bot state management
-├── persistence/
-│   └── sqlite_store.py # Trade and balance persistence
-├── telegram/
-│   └── console.py      # Telegram messaging and command handling
-└── main.py             # Main orchestrator with asyncio event loop
+.
+├── src/
+│   ├── config.py              # Centralized configuration
+│   ├── main.py                # Main orchestrator with async loop
+│   ├── ai/
+│   │   └── scorer.py          # Lightweight AI meta-scorer
+│   ├── strategy/
+│   │   └── strategy.py        # Modern scalping strategy
+│   ├── exchange/
+│   │   └── binance_client.py  # Binance Futures API wrapper
+│   ├── orders/
+│   │   └── manager.py         # Order management with brackets
+│   ├── risk/
+│   │   └── manager.py         # Position sizing and risk controls
+│   ├── state.py               # Daily state management
+│   ├── persistence/
+│   │   └── sqlite_store.py    # Trade and balance persistence
+│   └── telegram/
+│       └── console.py         # Telegram bot interface
+├── .env.example               # Environment variables template
+├── requirements.txt           # Python dependencies
+└── README.md                  # This file
 ```
 
-## 📋 Requirements
+## 🛠️ Installation
 
-- Python 3.8+
-- Binance Futures testnet account with API credentials
-- Telegram bot token (optional but recommended)
-
-## 🛠 Installation
-
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/Pelota19/crypto_bot.git
-   cd crypto_bot
-   ```
-
-2. **Install dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Configure environment variables** (copy `.env.example` to `.env`):
-   ```bash
-   cp .env.example .env
-   # Edit .env with your settings
-   ```
-
-4. **Set up Binance testnet**:
-   - Go to [Binance Testnet](https://testnet.binancefuture.com)
-   - Create API keys and add to `.env`
-
-5. **Set up Telegram (optional)**:
-   - Create a bot via @BotFather
-   - Get your chat ID
-   - Add credentials to `.env`
-
-## ⚙️ Configuration (.env example)
-
+1. **Clone and setup environment:**
 ```bash
-# Trading Mode
-MODE=paper                           # "paper" or "live" 
-BINANCE_TESTNET=true                 # Use testnet (recommended)
-
-# API Credentials
-BINANCE_API_KEY=your_api_key
-BINANCE_API_SECRET=your_api_secret
-
-# Capital & Risk Management  
-CAPITAL_MAX_USDT=2000.0             # Capital cap for position sizing
-STARTING_BALANCE_USDT=2000.0        # Initial balance for paper trading
-POSITION_SIZE_PERCENT=1.0           # 1% position size per trade
-DAILY_PROFIT_TARGET_USD=50.0        # Stop after +50 USD daily profit
-MAX_DAILY_LOSS_USD=100.0            # Stop after -100 USD daily loss
-
-# Trading Parameters
-LEVERAGE=5                          # Leverage for live trading
-MARGIN_MODE=ISOLATED                # ISOLATED or CROSSED
-TIMEFRAME=1m                        # Trading timeframe
-MAX_SYMBOLS=10                      # Maximum symbols to trade
-MIN_24H_VOLUME_USDT=5000000         # Minimum 24h volume filter
-
-# Telegram Integration
-TELEGRAM_TOKEN=your_bot_token
-TELEGRAM_CHAT_ID=your_chat_id
-
-# Logging & Data
-LOG_LEVEL=WARNING                   # Shell log level (WARNING = quiet)
-DATA_DIR=data                       # Data directory for persistence
+git clone https://github.com/Pelota19/crypto_bot.git
+cd crypto_bot
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 ```
 
-## 🚀 Usage
-
-**Start the bot**:
+2. **Install dependencies:**
 ```bash
 python src/main.py
 ```
 
-**Telegram Commands**:
-- `/status` - Show bot status, PnL, and settings
-- `/pause` - Pause trading (stop opening new positions)
-- `/resume` - Resume trading
+3. **Configure environment:**
+```bash
+cp .env.example .env
+# Edit .env with your configuration (see below)
+```
 
-## 🧪 Testing
+4. **Run the bot:**
+```bash
+python -m src.main
+```
 
-**Validate configuration**:
+## ⚙️ Configuration (.env file)
+
+```bash
+# =========================
+#   CRYPTO SCALPING BOT
+#   Binance Futures (USDM) - TESTNET
+# =========================
+
+# --- Mode ---
+MODE=paper                    # "paper" or "live"
+
+# --- Binance Futures Testnet ---
+BINANCE_TESTNET=true          # ALWAYS true for safety
+BINANCE_API_KEY=your_testnet_api_key
+BINANCE_API_SECRET=your_testnet_secret
+
+# --- Capital and Sizing ---
+CAPITAL_MAX_USDT=2000.0       # Maximum capital for position sizing
+STARTING_BALANCE_USDT=2000.0  # Starting balance for paper mode
+
+# --- Trading Parameters ---
+POSITION_SIZE_PERCENT=1.0     # 1% position size
+DAILY_PROFIT_TARGET_USD=50.0  # Stop trading after +50 USD profit
+MAX_DAILY_LOSS_USD=100.0      # Stop trading after -100 USD loss
+
+# --- Leverage/Margin (Live Mode Only) ---
+LEVERAGE=5                    # 1-125x leverage
+MARGIN_MODE=ISOLATED          # ISOLATED or CROSSED
+
+# --- Strategy Settings ---
+TIMEFRAME=1m                  # Trading timeframe
+MAX_SYMBOLS=10                # Maximum symbols to trade
+MIN_24H_VOLUME_USDT=5000000   # Minimum 24h volume filter
+
+# --- Telegram Bot ---
+TELEGRAM_TOKEN=your_bot_token
+TELEGRAM_CHAT_ID=your_chat_id
+
+# --- Logging ---
+LOG_LEVEL=WARNING             # Keep console quiet
+```
+
+## 🤖 AI Meta-Scorer
+
+The bot uses a lightweight AI system that combines multiple technical indicators:
+
+- **Momentum**: EMA9-EMA21 normalized difference
+- **RSI Centered**: (RSI-50)/50 for mean reversion signals  
+- **VWAP Deviation**: Price deviation from VWAP in ATR units
+- **ATR Regime**: Volatility regime detection
+- **Micro-trend**: Short-term price slope analysis
+
+The scorer outputs values from -1 to +1, with thresholds at ±0.25 for trade signals.
+
+## 📊 Trading Strategy
+
+### Entry Conditions
+- **Buy**: AI score ≥ +0.25 AND EMA9 > EMA21 AND RSI > 50
+- **Sell**: AI score ≤ -0.25 AND EMA9 < EMA21 AND RSI < 50
+
+### Risk Management
+- **Stop Loss**: 0.35x ATR with 0.1%-1.2% price limits
+- **Take Profit**: 0.70x ATR with 0.2%-2.4% price limits
+- **Position Sizing**: Capped at 2000 USDT regardless of actual balance
+- **Market Constraints**: Respects minQty, stepSize, and tickSize
+
+### Daily Controls
+- Stops new trades after +50 USD daily profit
+- Stops new trades after -100 USD daily loss
+- Resets at 00:00 UTC daily
+
+## 📱 Telegram Commands
+
+Once configured, control the bot via Telegram:
+
+- `/status` - View current status, balance, and daily PnL
+- `/pause` - Pause new trade entries
+- `/resume` - Resume trading (if within daily limits)
+
+## 🔧 Development & Testing
+
+**Validate configuration:**
 ```bash
 python validate_config.py
 ```
 
-**Run basic tests**:
+**Run basic tests:**
 ```bash
 python test_basic.py
 ```
 
-**Test with testnet**:
-1. Set `BINANCE_TESTNET=true` in `.env`
-2. Use testnet API credentials
-3. Start with `MODE=paper` for simulation
-4. Progress to `MODE=live` on testnet for real orders
-
-## 🎯 AI Meta-Scorer
-
-The SimpleMetaScorer combines multiple technical indicators into a single score:
-
-- **Momentum**: EMA9-EMA21 normalized by price
-- **RSI Centered**: (RSI-50)/50 for mean reversion
-- **VWAP Deviation**: Distance from VWAP in ATR units
-- **ATR Regime**: Volatility normalization
-- **Micro-trend**: Short-term price slope
-
-Weights are persisted in JSON and can be adjusted over time for optimization.
-
-## ⚠️ Risk Warnings
-
-- **Testnet Only**: This bot is configured for Binance testnet by default
-- **Capital Loss**: Trading involves significant risk of capital loss
-- **Code Review**: Thoroughly review and test before live deployment  
-- **API Security**: Keep API keys secure and use IP restrictions
-- **Position Sizing**: Respect the capital cap and never risk more than you can afford to lose
-- **Market Conditions**: Performance varies significantly with market conditions
-
-## 📊 Strategy Details
-
-**Entry Conditions**:
-- AI scorer above +0.25 (buy) or below -0.25 (sell)
-- EMA agreement: EMA9 > EMA21 + RSI > 50 for buy (opposite for sell)
-- Trade feasibility check (minimum quantity requirements)
-
-**Exit Conditions**:
-- Dynamic SL/TP based on ATR (0.35x ATR for SL, 0.70x ATR for TP)
-- Minimum 0.1% and maximum 1.2% for SL/TP distances
-- Bracket orders placed as conditional reduceOnly orders
-
-**Risk Management**:
-- Position sizing capped at CAPITAL_MAX_USDT regardless of actual balance
-- Daily profit/loss limits with automatic trading halt
-- Per-trade position size as percentage of effective capital
-
-## 🔧 Development
-
-**Code quality tools**:
+**Code quality checks:**
 ```bash
 # Linting
 python -m ruff check .
 
 # Formatting  
 python -m black .
-
-# Type checking
-python -m mypy src --ignore-missing-imports
 ```
 
-## 📝 License
+## ⚠️ Safety & Warnings
 
-This project is for educational and testing purposes. Use at your own risk.
+### Testnet First
+- **ALWAYS** test on Binance Futures testnet first
+- Set `BINANCE_TESTNET=true` in your .env file
+- Get testnet API keys from [Binance Testnet](https://testnet.binancefuture.com/)
+
+### Mainnet Usage
+- **NEVER** use mainnet without thorough testing
+- Requires explicit `BINANCE_TESTNET=false` AND `MODE=live`
+- Start with small capital amounts
+- Monitor closely for the first few hours
+
+### Risk Disclaimers
+- Cryptocurrency trading involves substantial risk
+- Past performance does not guarantee future results
+- Only trade with capital you can afford to lose
+- This software is provided "as-is" without warranties
+
+## 🏗️ Architecture Notes
+
+### Capital Management
+- Position sizing uses `min(actual_balance, CAPITAL_MAX_USDT)`
+- Prevents over-leveraging even with larger account balances
+- Daily PnL tracking via balance snapshots
+
+### Order Execution
+- Market orders with immediate SL/TP bracket placement
+- Respects exchange minQty/stepSize constraints
+- Graceful handling of rejected orders below minimum size
+
+### State Management
+- Persistent daily state with automatic UTC reset
+- SQLite storage for trades and balance history
+- Robust error handling and recovery
+
+## 📈 Performance Monitoring
+
+The bot tracks:
+- Individual trade PnL with fees
+- Daily cumulative PnL
+- Win/loss ratios (via SQLite logs)
+- Order execution statistics
+
+Access trade history via SQLite:
+```bash
+sqlite3 data/crypto_bot.db
+.tables
+SELECT * FROM orders ORDER BY ts DESC LIMIT 10;
+```
 
 ## 🤝 Contributing
 
 1. Fork the repository
 2. Create a feature branch
-3. Make your changes
-4. Test thoroughly on testnet
-5. Submit a pull request
+3. Test thoroughly on testnet
+4. Submit a pull request
+
+## 📄 License
+
+This project is open source. Use at your own risk.
 
 ---
 
-**⚠️ Important**: Always test on Binance testnet before considering any live deployment. This bot is provided as-is for educational purposes.
+**Remember**: Always test on testnet first. Never risk more than you can afford to lose.
