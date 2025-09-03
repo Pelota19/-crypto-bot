@@ -1,65 +1,52 @@
-"""Logging configuration with rotation."""
+"""Logging configuration with rotation and a single global setup."""
 import logging
 import logging.handlers
-import os
-from datetime import datetime
 from pathlib import Path
 from config.settings import LOG_LEVEL, LOGS_DIR
 
 def setup_logging():
-    """Setup logging with console and rotating file handlers."""
-    # Create logs directory
+    """Setup logging with console and rotating file handlers. Idempotent."""
     LOGS_DIR.mkdir(exist_ok=True)
-    
-    # Configure root logger
+
     root_logger = logging.getLogger()
-    
-    # Clear existing handlers to avoid duplicates
-    for handler in root_logger.handlers[:]:
-        root_logger.removeHandler(handler)
-    
+    # Avoid adding duplicate handlers if called multiple times
+    if root_logger.handlers:
+        return root_logger
+
     # Set log level
     level = getattr(logging, LOG_LEVEL.upper(), logging.INFO)
     root_logger.setLevel(level)
-    
-    # Create formatter
+
     formatter = logging.Formatter(
         "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S"
     )
-    
+
     # Console handler
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
-    console_handler.setFormatter(formatter)
-    root_logger.addHandler(console_handler)
-    
-    # Rotating file handler for general logs
+    ch = logging.StreamHandler()
+    ch.setLevel(level)
+    ch.setFormatter(formatter)
+    root_logger.addHandler(ch)
+
+    # Rotating file handler
     log_file = LOGS_DIR / "crypto_bot.log"
-    file_handler = logging.handlers.RotatingFileHandler(
-        log_file,
-        maxBytes=10 * 1024 * 1024,  # 10MB
-        backupCount=5,
-        encoding="utf-8"
+    fh = logging.handlers.RotatingFileHandler(
+        log_file, maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8"
     )
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(formatter)
-    root_logger.addHandler(file_handler)
-    
+    fh.setLevel(logging.DEBUG)
+    fh.setFormatter(formatter)
+    root_logger.addHandler(fh)
+
     # Error file handler
-    error_file = LOGS_DIR / "crypto_bot_error.log"
-    error_handler = logging.handlers.RotatingFileHandler(
-        error_file,
-        maxBytes=5 * 1024 * 1024,  # 5MB
-        backupCount=3,
-        encoding="utf-8"
+    err_file = LOGS_DIR / "crypto_bot_error.log"
+    eh = logging.handlers.RotatingFileHandler(
+        err_file, maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
     )
-    error_handler.setLevel(logging.ERROR)
-    error_handler.setFormatter(formatter)
-    root_logger.addHandler(error_handler)
-    
+    eh.setLevel(logging.ERROR)
+    eh.setFormatter(formatter)
+    root_logger.addHandler(eh)
+
     return root_logger
 
 def get_logger(name: str = None) -> logging.Logger:
-    """Get a logger instance."""
     return logging.getLogger(name)
