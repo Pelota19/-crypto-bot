@@ -1,0 +1,510 @@
+2025-09-03 12:31:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for B: binance does not have market symbol B
+2025-09-03 12:31:43 [WARNING] core.bot: No data available for B
+2025-09-03 12:31:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:31:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:31:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for C: binance does not have market symbol C
+2025-09-03 12:31:43 [WARNING] core.bot: No data available for C
+2025-09-03 12:31:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for /: binance does not have market symbol /
+2025-09-03 12:31:43 [WARNING] core.bot: No data available for /
+2025-09-03 12:31:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for U: binance does not have market symbol U
+2025-09-03 12:31:43 [WARNING] core.bot: No data available for U
+2025-09-03 12:31:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for S: binance does not have market symbol S
+2025-09-03 12:31:43 [WARNING] core.bot: No data available for S
+2025-09-03 12:31:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for D: binance does not have market symbol D
+2025-09-03 12:31:43 [WARNING] core.bot: No data available for D
+2025-09-03 12:31:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:31:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:31:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for ,: binance does not have market symbol ,
+2025-09-03 12:31:43 [WARNING] core.bot: No data available for ,
+2025-09-03 12:31:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for E: binance does not have market symbol E
+2025-09-03 12:31:43 [WARNING] core.bot: No data available for E
+2025-09-03 12:31:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:31:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:31:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for H: binance does not have market symbol H
+2025-09-03 12:31:43 [WARNING] core.bot: No data available for H
+2025-09-03 12:31:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for /: binance does not have market symbol /
+2025-09-03 12:31:43 [WARNING] core.bot: No data available for /
+2025-09-03 12:31:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for U: binance does not have market symbol U
+2025-09-03 12:31:43 [WARNING] core.bot: No data available for U
+2025-09-03 12:31:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for S: binance does not have market symbol S
+2025-09-03 12:31:43 [WARNING] core.bot: No data available for S
+2025-09-03 12:31:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for D: binance does not have market symbol D
+2025-09-03 12:31:43 [WARNING] core.bot: No data available for D
+2025-09-03 12:31:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:31:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:32:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for B: binance does not have market symbol B
+2025-09-03 12:32:43 [WARNING] core.bot: No data available for B
+2025-09-03 12:32:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:32:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:32:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for C: binance does not have market symbol C
+2025-09-03 12:32:43 [WARNING] core.bot: No data available for C
+2025-09-03 12:32:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for /: binance does not have market symbol /
+2025-09-03 12:32:43 [WARNING] core.bot: No data available for /
+2025-09-03 12:32:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for U: binance does not have market symbol U
+2025-09-03 12:32:43 [WARNING] core.bot: No data available for U
+2025-09-03 12:32:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for S: binance does not have market symbol S
+2025-09-03 12:32:43 [WARNING] core.bot: No data available for S
+2025-09-03 12:32:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for D: binance does not have market symbol D
+2025-09-03 12:32:43 [WARNING] core.bot: No data available for D
+2025-09-03 12:32:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:32:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:32:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for ,: binance does not have market symbol ,
+2025-09-03 12:32:43 [WARNING] core.bot: No data available for ,
+2025-09-03 12:32:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for E: binance does not have market symbol E
+2025-09-03 12:32:43 [WARNING] core.bot: No data available for E
+2025-09-03 12:32:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:32:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:32:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for H: binance does not have market symbol H
+2025-09-03 12:32:43 [WARNING] core.bot: No data available for H
+2025-09-03 12:32:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for /: binance does not have market symbol /
+2025-09-03 12:32:43 [WARNING] core.bot: No data available for /
+2025-09-03 12:32:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for U: binance does not have market symbol U
+2025-09-03 12:32:43 [WARNING] core.bot: No data available for U
+2025-09-03 12:32:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for S: binance does not have market symbol S
+2025-09-03 12:32:43 [WARNING] core.bot: No data available for S
+2025-09-03 12:32:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for D: binance does not have market symbol D
+2025-09-03 12:32:43 [WARNING] core.bot: No data available for D
+2025-09-03 12:32:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:32:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:33:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for B: binance does not have market symbol B
+2025-09-03 12:33:43 [WARNING] core.bot: No data available for B
+2025-09-03 12:33:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:33:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:33:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for C: binance does not have market symbol C
+2025-09-03 12:33:43 [WARNING] core.bot: No data available for C
+2025-09-03 12:33:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for /: binance does not have market symbol /
+2025-09-03 12:33:43 [WARNING] core.bot: No data available for /
+2025-09-03 12:33:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for U: binance does not have market symbol U
+2025-09-03 12:33:43 [WARNING] core.bot: No data available for U
+2025-09-03 12:33:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for S: binance does not have market symbol S
+2025-09-03 12:33:43 [WARNING] core.bot: No data available for S
+2025-09-03 12:33:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for D: binance does not have market symbol D
+2025-09-03 12:33:43 [WARNING] core.bot: No data available for D
+2025-09-03 12:33:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:33:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:33:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for ,: binance does not have market symbol ,
+2025-09-03 12:33:43 [WARNING] core.bot: No data available for ,
+2025-09-03 12:33:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for E: binance does not have market symbol E
+2025-09-03 12:33:43 [WARNING] core.bot: No data available for E
+2025-09-03 12:33:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:33:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:33:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for H: binance does not have market symbol H
+2025-09-03 12:33:43 [WARNING] core.bot: No data available for H
+2025-09-03 12:33:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for /: binance does not have market symbol /
+2025-09-03 12:33:43 [WARNING] core.bot: No data available for /
+2025-09-03 12:33:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for U: binance does not have market symbol U
+2025-09-03 12:33:43 [WARNING] core.bot: No data available for U
+2025-09-03 12:33:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for S: binance does not have market symbol S
+2025-09-03 12:33:43 [WARNING] core.bot: No data available for S
+2025-09-03 12:33:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for D: binance does not have market symbol D
+2025-09-03 12:33:43 [WARNING] core.bot: No data available for D
+2025-09-03 12:33:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:33:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:34:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for B: binance does not have market symbol B
+2025-09-03 12:34:43 [WARNING] core.bot: No data available for B
+2025-09-03 12:34:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:34:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:34:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for C: binance does not have market symbol C
+2025-09-03 12:34:43 [WARNING] core.bot: No data available for C
+2025-09-03 12:34:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for /: binance does not have market symbol /
+2025-09-03 12:34:43 [WARNING] core.bot: No data available for /
+2025-09-03 12:34:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for U: binance does not have market symbol U
+2025-09-03 12:34:43 [WARNING] core.bot: No data available for U
+2025-09-03 12:34:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for S: binance does not have market symbol S
+2025-09-03 12:34:43 [WARNING] core.bot: No data available for S
+2025-09-03 12:34:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for D: binance does not have market symbol D
+2025-09-03 12:34:43 [WARNING] core.bot: No data available for D
+2025-09-03 12:34:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:34:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:34:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for ,: binance does not have market symbol ,
+2025-09-03 12:34:43 [WARNING] core.bot: No data available for ,
+2025-09-03 12:34:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for E: binance does not have market symbol E
+2025-09-03 12:34:43 [WARNING] core.bot: No data available for E
+2025-09-03 12:34:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:34:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:34:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for H: binance does not have market symbol H
+2025-09-03 12:34:43 [WARNING] core.bot: No data available for H
+2025-09-03 12:34:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for /: binance does not have market symbol /
+2025-09-03 12:34:43 [WARNING] core.bot: No data available for /
+2025-09-03 12:34:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for U: binance does not have market symbol U
+2025-09-03 12:34:43 [WARNING] core.bot: No data available for U
+2025-09-03 12:34:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for S: binance does not have market symbol S
+2025-09-03 12:34:43 [WARNING] core.bot: No data available for S
+2025-09-03 12:34:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for D: binance does not have market symbol D
+2025-09-03 12:34:43 [WARNING] core.bot: No data available for D
+2025-09-03 12:34:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:34:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:35:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for B: binance does not have market symbol B
+2025-09-03 12:35:43 [WARNING] core.bot: No data available for B
+2025-09-03 12:35:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:35:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:35:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for C: binance does not have market symbol C
+2025-09-03 12:35:43 [WARNING] core.bot: No data available for C
+2025-09-03 12:35:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for /: binance does not have market symbol /
+2025-09-03 12:35:43 [WARNING] core.bot: No data available for /
+2025-09-03 12:35:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for U: binance does not have market symbol U
+2025-09-03 12:35:43 [WARNING] core.bot: No data available for U
+2025-09-03 12:35:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for S: binance does not have market symbol S
+2025-09-03 12:35:43 [WARNING] core.bot: No data available for S
+2025-09-03 12:35:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for D: binance does not have market symbol D
+2025-09-03 12:35:43 [WARNING] core.bot: No data available for D
+2025-09-03 12:35:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:35:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:35:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for ,: binance does not have market symbol ,
+2025-09-03 12:35:43 [WARNING] core.bot: No data available for ,
+2025-09-03 12:35:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for E: binance does not have market symbol E
+2025-09-03 12:35:43 [WARNING] core.bot: No data available for E
+2025-09-03 12:35:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:35:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:35:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for H: binance does not have market symbol H
+2025-09-03 12:35:43 [WARNING] core.bot: No data available for H
+2025-09-03 12:35:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for /: binance does not have market symbol /
+2025-09-03 12:35:43 [WARNING] core.bot: No data available for /
+2025-09-03 12:35:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for U: binance does not have market symbol U
+2025-09-03 12:35:43 [WARNING] core.bot: No data available for U
+2025-09-03 12:35:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for S: binance does not have market symbol S
+2025-09-03 12:35:43 [WARNING] core.bot: No data available for S
+2025-09-03 12:35:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for D: binance does not have market symbol D
+2025-09-03 12:35:43 [WARNING] core.bot: No data available for D
+2025-09-03 12:35:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:35:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:36:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for B: binance does not have market symbol B
+2025-09-03 12:36:43 [WARNING] core.bot: No data available for B
+2025-09-03 12:36:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:36:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:36:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for C: binance does not have market symbol C
+2025-09-03 12:36:43 [WARNING] core.bot: No data available for C
+2025-09-03 12:36:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for /: binance does not have market symbol /
+2025-09-03 12:36:43 [WARNING] core.bot: No data available for /
+2025-09-03 12:36:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for U: binance does not have market symbol U
+2025-09-03 12:36:43 [WARNING] core.bot: No data available for U
+2025-09-03 12:36:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for S: binance does not have market symbol S
+2025-09-03 12:36:43 [WARNING] core.bot: No data available for S
+2025-09-03 12:36:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for D: binance does not have market symbol D
+2025-09-03 12:36:43 [WARNING] core.bot: No data available for D
+2025-09-03 12:36:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:36:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:36:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for ,: binance does not have market symbol ,
+2025-09-03 12:36:43 [WARNING] core.bot: No data available for ,
+2025-09-03 12:36:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for E: binance does not have market symbol E
+2025-09-03 12:36:43 [WARNING] core.bot: No data available for E
+2025-09-03 12:36:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:36:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:36:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for H: binance does not have market symbol H
+2025-09-03 12:36:43 [WARNING] core.bot: No data available for H
+2025-09-03 12:36:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for /: binance does not have market symbol /
+2025-09-03 12:36:43 [WARNING] core.bot: No data available for /
+2025-09-03 12:36:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for U: binance does not have market symbol U
+2025-09-03 12:36:43 [WARNING] core.bot: No data available for U
+2025-09-03 12:36:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for S: binance does not have market symbol S
+2025-09-03 12:36:43 [WARNING] core.bot: No data available for S
+2025-09-03 12:36:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for D: binance does not have market symbol D
+2025-09-03 12:36:43 [WARNING] core.bot: No data available for D
+2025-09-03 12:36:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:36:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:37:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for B: binance does not have market symbol B
+2025-09-03 12:37:43 [WARNING] core.bot: No data available for B
+2025-09-03 12:37:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:37:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:37:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for C: binance does not have market symbol C
+2025-09-03 12:37:43 [WARNING] core.bot: No data available for C
+2025-09-03 12:37:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for /: binance does not have market symbol /
+2025-09-03 12:37:43 [WARNING] core.bot: No data available for /
+2025-09-03 12:37:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for U: binance does not have market symbol U
+2025-09-03 12:37:43 [WARNING] core.bot: No data available for U
+2025-09-03 12:37:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for S: binance does not have market symbol S
+2025-09-03 12:37:43 [WARNING] core.bot: No data available for S
+2025-09-03 12:37:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for D: binance does not have market symbol D
+2025-09-03 12:37:43 [WARNING] core.bot: No data available for D
+2025-09-03 12:37:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:37:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:37:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for ,: binance does not have market symbol ,
+2025-09-03 12:37:43 [WARNING] core.bot: No data available for ,
+2025-09-03 12:37:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for E: binance does not have market symbol E
+2025-09-03 12:37:43 [WARNING] core.bot: No data available for E
+2025-09-03 12:37:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:37:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:37:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for H: binance does not have market symbol H
+2025-09-03 12:37:43 [WARNING] core.bot: No data available for H
+2025-09-03 12:37:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for /: binance does not have market symbol /
+2025-09-03 12:37:43 [WARNING] core.bot: No data available for /
+2025-09-03 12:37:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for U: binance does not have market symbol U
+2025-09-03 12:37:43 [WARNING] core.bot: No data available for U
+2025-09-03 12:37:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for S: binance does not have market symbol S
+2025-09-03 12:37:43 [WARNING] core.bot: No data available for S
+2025-09-03 12:37:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for D: binance does not have market symbol D
+2025-09-03 12:37:43 [WARNING] core.bot: No data available for D
+2025-09-03 12:37:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:37:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:38:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for B: binance does not have market symbol B
+2025-09-03 12:38:43 [WARNING] core.bot: No data available for B
+2025-09-03 12:38:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:38:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:38:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for C: binance does not have market symbol C
+2025-09-03 12:38:43 [WARNING] core.bot: No data available for C
+2025-09-03 12:38:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for /: binance does not have market symbol /
+2025-09-03 12:38:43 [WARNING] core.bot: No data available for /
+2025-09-03 12:38:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for U: binance does not have market symbol U
+2025-09-03 12:38:43 [WARNING] core.bot: No data available for U
+2025-09-03 12:38:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for S: binance does not have market symbol S
+2025-09-03 12:38:43 [WARNING] core.bot: No data available for S
+2025-09-03 12:38:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for D: binance does not have market symbol D
+2025-09-03 12:38:43 [WARNING] core.bot: No data available for D
+2025-09-03 12:38:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:38:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:38:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for ,: binance does not have market symbol ,
+2025-09-03 12:38:43 [WARNING] core.bot: No data available for ,
+2025-09-03 12:38:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for E: binance does not have market symbol E
+2025-09-03 12:38:43 [WARNING] core.bot: No data available for E
+2025-09-03 12:38:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:38:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:38:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for H: binance does not have market symbol H
+2025-09-03 12:38:43 [WARNING] core.bot: No data available for H
+2025-09-03 12:38:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for /: binance does not have market symbol /
+2025-09-03 12:38:43 [WARNING] core.bot: No data available for /
+2025-09-03 12:38:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for U: binance does not have market symbol U
+2025-09-03 12:38:43 [WARNING] core.bot: No data available for U
+2025-09-03 12:38:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for S: binance does not have market symbol S
+2025-09-03 12:38:43 [WARNING] core.bot: No data available for S
+2025-09-03 12:38:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for D: binance does not have market symbol D
+2025-09-03 12:38:43 [WARNING] core.bot: No data available for D
+2025-09-03 12:38:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:38:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:39:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for B: binance does not have market symbol B
+2025-09-03 12:39:43 [WARNING] core.bot: No data available for B
+2025-09-03 12:39:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:39:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:39:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for C: binance does not have market symbol C
+2025-09-03 12:39:43 [WARNING] core.bot: No data available for C
+2025-09-03 12:39:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for /: binance does not have market symbol /
+2025-09-03 12:39:43 [WARNING] core.bot: No data available for /
+2025-09-03 12:39:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for U: binance does not have market symbol U
+2025-09-03 12:39:43 [WARNING] core.bot: No data available for U
+2025-09-03 12:39:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for S: binance does not have market symbol S
+2025-09-03 12:39:43 [WARNING] core.bot: No data available for S
+2025-09-03 12:39:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for D: binance does not have market symbol D
+2025-09-03 12:39:43 [WARNING] core.bot: No data available for D
+2025-09-03 12:39:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:39:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:39:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for ,: binance does not have market symbol ,
+2025-09-03 12:39:43 [WARNING] core.bot: No data available for ,
+2025-09-03 12:39:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for E: binance does not have market symbol E
+2025-09-03 12:39:43 [WARNING] core.bot: No data available for E
+2025-09-03 12:39:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:39:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:39:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for H: binance does not have market symbol H
+2025-09-03 12:39:43 [WARNING] core.bot: No data available for H
+2025-09-03 12:39:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for /: binance does not have market symbol /
+2025-09-03 12:39:43 [WARNING] core.bot: No data available for /
+2025-09-03 12:39:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for U: binance does not have market symbol U
+2025-09-03 12:39:43 [WARNING] core.bot: No data available for U
+2025-09-03 12:39:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for S: binance does not have market symbol S
+2025-09-03 12:39:43 [WARNING] core.bot: No data available for S
+2025-09-03 12:39:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for D: binance does not have market symbol D
+2025-09-03 12:39:43 [WARNING] core.bot: No data available for D
+2025-09-03 12:39:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:39:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:40:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for B: binance does not have market symbol B
+2025-09-03 12:40:43 [WARNING] core.bot: No data available for B
+2025-09-03 12:40:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:40:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:40:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for C: binance does not have market symbol C
+2025-09-03 12:40:43 [WARNING] core.bot: No data available for C
+2025-09-03 12:40:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for /: binance does not have market symbol /
+2025-09-03 12:40:43 [WARNING] core.bot: No data available for /
+2025-09-03 12:40:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for U: binance does not have market symbol U
+2025-09-03 12:40:43 [WARNING] core.bot: No data available for U
+2025-09-03 12:40:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for S: binance does not have market symbol S
+2025-09-03 12:40:43 [WARNING] core.bot: No data available for S
+2025-09-03 12:40:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for D: binance does not have market symbol D
+2025-09-03 12:40:43 [WARNING] core.bot: No data available for D
+2025-09-03 12:40:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:40:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:40:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for ,: binance does not have market symbol ,
+2025-09-03 12:40:43 [WARNING] core.bot: No data available for ,
+2025-09-03 12:40:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for E: binance does not have market symbol E
+2025-09-03 12:40:43 [WARNING] core.bot: No data available for E
+2025-09-03 12:40:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:40:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:40:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for H: binance does not have market symbol H
+2025-09-03 12:40:43 [WARNING] core.bot: No data available for H
+2025-09-03 12:40:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for /: binance does not have market symbol /
+2025-09-03 12:40:43 [WARNING] core.bot: No data available for /
+2025-09-03 12:40:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for U: binance does not have market symbol U
+2025-09-03 12:40:43 [WARNING] core.bot: No data available for U
+2025-09-03 12:40:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for S: binance does not have market symbol S
+2025-09-03 12:40:43 [WARNING] core.bot: No data available for S
+2025-09-03 12:40:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for D: binance does not have market symbol D
+2025-09-03 12:40:43 [WARNING] core.bot: No data available for D
+2025-09-03 12:40:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:40:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:41:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for B: binance does not have market symbol B
+2025-09-03 12:41:43 [WARNING] core.bot: No data available for B
+2025-09-03 12:41:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:41:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:41:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for C: binance does not have market symbol C
+2025-09-03 12:41:43 [WARNING] core.bot: No data available for C
+2025-09-03 12:41:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for /: binance does not have market symbol /
+2025-09-03 12:41:43 [WARNING] core.bot: No data available for /
+2025-09-03 12:41:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for U: binance does not have market symbol U
+2025-09-03 12:41:43 [WARNING] core.bot: No data available for U
+2025-09-03 12:41:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for S: binance does not have market symbol S
+2025-09-03 12:41:43 [WARNING] core.bot: No data available for S
+2025-09-03 12:41:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for D: binance does not have market symbol D
+2025-09-03 12:41:43 [WARNING] core.bot: No data available for D
+2025-09-03 12:41:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:41:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:41:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for ,: binance does not have market symbol ,
+2025-09-03 12:41:43 [WARNING] core.bot: No data available for ,
+2025-09-03 12:41:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for E: binance does not have market symbol E
+2025-09-03 12:41:43 [WARNING] core.bot: No data available for E
+2025-09-03 12:41:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:41:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:41:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for H: binance does not have market symbol H
+2025-09-03 12:41:43 [WARNING] core.bot: No data available for H
+2025-09-03 12:41:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for /: binance does not have market symbol /
+2025-09-03 12:41:43 [WARNING] core.bot: No data available for /
+2025-09-03 12:41:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for U: binance does not have market symbol U
+2025-09-03 12:41:43 [WARNING] core.bot: No data available for U
+2025-09-03 12:41:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for S: binance does not have market symbol S
+2025-09-03 12:41:43 [WARNING] core.bot: No data available for S
+2025-09-03 12:41:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for D: binance does not have market symbol D
+2025-09-03 12:41:43 [WARNING] core.bot: No data available for D
+2025-09-03 12:41:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:41:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:42:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for B: binance does not have market symbol B
+2025-09-03 12:42:43 [WARNING] core.bot: No data available for B
+2025-09-03 12:42:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:42:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:42:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for C: binance does not have market symbol C
+2025-09-03 12:42:43 [WARNING] core.bot: No data available for C
+2025-09-03 12:42:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for /: binance does not have market symbol /
+2025-09-03 12:42:43 [WARNING] core.bot: No data available for /
+2025-09-03 12:42:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for U: binance does not have market symbol U
+2025-09-03 12:42:43 [WARNING] core.bot: No data available for U
+2025-09-03 12:42:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for S: binance does not have market symbol S
+2025-09-03 12:42:43 [WARNING] core.bot: No data available for S
+2025-09-03 12:42:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for D: binance does not have market symbol D
+2025-09-03 12:42:43 [WARNING] core.bot: No data available for D
+2025-09-03 12:42:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:42:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:42:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for ,: binance does not have market symbol ,
+2025-09-03 12:42:43 [WARNING] core.bot: No data available for ,
+2025-09-03 12:42:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for E: binance does not have market symbol E
+2025-09-03 12:42:43 [WARNING] core.bot: No data available for E
+2025-09-03 12:42:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:42:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:42:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for H: binance does not have market symbol H
+2025-09-03 12:42:43 [WARNING] core.bot: No data available for H
+2025-09-03 12:42:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for /: binance does not have market symbol /
+2025-09-03 12:42:43 [WARNING] core.bot: No data available for /
+2025-09-03 12:42:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for U: binance does not have market symbol U
+2025-09-03 12:42:43 [WARNING] core.bot: No data available for U
+2025-09-03 12:42:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for S: binance does not have market symbol S
+2025-09-03 12:42:43 [WARNING] core.bot: No data available for S
+2025-09-03 12:42:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for D: binance does not have market symbol D
+2025-09-03 12:42:43 [WARNING] core.bot: No data available for D
+2025-09-03 12:42:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:42:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:43:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for B: binance does not have market symbol B
+2025-09-03 12:43:43 [WARNING] core.bot: No data available for B
+2025-09-03 12:43:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:43:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:43:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for C: binance does not have market symbol C
+2025-09-03 12:43:43 [WARNING] core.bot: No data available for C
+2025-09-03 12:43:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for /: binance does not have market symbol /
+2025-09-03 12:43:43 [WARNING] core.bot: No data available for /
+2025-09-03 12:43:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for U: binance does not have market symbol U
+2025-09-03 12:43:43 [WARNING] core.bot: No data available for U
+2025-09-03 12:43:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for S: binance does not have market symbol S
+2025-09-03 12:43:43 [WARNING] core.bot: No data available for S
+2025-09-03 12:43:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for D: binance does not have market symbol D
+2025-09-03 12:43:43 [WARNING] core.bot: No data available for D
+2025-09-03 12:43:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:43:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:43:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for ,: binance does not have market symbol ,
+2025-09-03 12:43:43 [WARNING] core.bot: No data available for ,
+2025-09-03 12:43:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for E: binance does not have market symbol E
+2025-09-03 12:43:43 [WARNING] core.bot: No data available for E
+2025-09-03 12:43:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:43:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:43:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for H: binance does not have market symbol H
+2025-09-03 12:43:43 [WARNING] core.bot: No data available for H
+2025-09-03 12:43:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for /: binance does not have market symbol /
+2025-09-03 12:43:43 [WARNING] core.bot: No data available for /
+2025-09-03 12:43:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for U: binance does not have market symbol U
+2025-09-03 12:43:43 [WARNING] core.bot: No data available for U
+2025-09-03 12:43:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for S: binance does not have market symbol S
+2025-09-03 12:43:43 [WARNING] core.bot: No data available for S
+2025-09-03 12:43:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for D: binance does not have market symbol D
+2025-09-03 12:43:43 [WARNING] core.bot: No data available for D
+2025-09-03 12:43:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:43:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:44:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for B: binance does not have market symbol B
+2025-09-03 12:44:43 [WARNING] core.bot: No data available for B
+2025-09-03 12:44:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:44:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:44:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for C: binance does not have market symbol C
+2025-09-03 12:44:43 [WARNING] core.bot: No data available for C
+2025-09-03 12:44:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for /: binance does not have market symbol /
+2025-09-03 12:44:43 [WARNING] core.bot: No data available for /
+2025-09-03 12:44:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for U: binance does not have market symbol U
+2025-09-03 12:44:43 [WARNING] core.bot: No data available for U
+2025-09-03 12:44:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for S: binance does not have market symbol S
+2025-09-03 12:44:43 [WARNING] core.bot: No data available for S
+2025-09-03 12:44:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for D: binance does not have market symbol D
+2025-09-03 12:44:43 [WARNING] core.bot: No data available for D
+2025-09-03 12:44:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:44:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:44:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for ,: binance does not have market symbol ,
+2025-09-03 12:44:43 [WARNING] core.bot: No data available for ,
+2025-09-03 12:44:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for E: binance does not have market symbol E
+2025-09-03 12:44:43 [WARNING] core.bot: No data available for E
+2025-09-03 12:44:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:44:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:44:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for H: binance does not have market symbol H
+2025-09-03 12:44:43 [WARNING] core.bot: No data available for H
+2025-09-03 12:44:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for /: binance does not have market symbol /
+2025-09-03 12:44:43 [WARNING] core.bot: No data available for /
+2025-09-03 12:44:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for U: binance does not have market symbol U
+2025-09-03 12:44:43 [WARNING] core.bot: No data available for U
+2025-09-03 12:44:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for S: binance does not have market symbol S
+2025-09-03 12:44:43 [WARNING] core.bot: No data available for S
+2025-09-03 12:44:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for D: binance does not have market symbol D
+2025-09-03 12:44:43 [WARNING] core.bot: No data available for D
+2025-09-03 12:44:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:44:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:45:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for B: binance does not have market symbol B
+2025-09-03 12:45:43 [WARNING] core.bot: No data available for B
+2025-09-03 12:45:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:45:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:45:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for C: binance does not have market symbol C
+2025-09-03 12:45:43 [WARNING] core.bot: No data available for C
+2025-09-03 12:45:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for /: binance does not have market symbol /
+2025-09-03 12:45:43 [WARNING] core.bot: No data available for /
+2025-09-03 12:45:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for U: binance does not have market symbol U
+2025-09-03 12:45:43 [WARNING] core.bot: No data available for U
+2025-09-03 12:45:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for S: binance does not have market symbol S
+2025-09-03 12:45:43 [WARNING] core.bot: No data available for S
+2025-09-03 12:45:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for D: binance does not have market symbol D
+2025-09-03 12:45:43 [WARNING] core.bot: No data available for D
+2025-09-03 12:45:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:45:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:45:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for ,: binance does not have market symbol ,
+2025-09-03 12:45:43 [WARNING] core.bot: No data available for ,
+2025-09-03 12:45:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for E: binance does not have market symbol E
+2025-09-03 12:45:43 [WARNING] core.bot: No data available for E
+2025-09-03 12:45:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:45:43 [WARNING] core.bot: No data available for T
+2025-09-03 12:45:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for H: binance does not have market symbol H
+2025-09-03 12:45:43 [WARNING] core.bot: No data available for H
+2025-09-03 12:45:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for /: binance does not have market symbol /
+2025-09-03 12:45:43 [WARNING] core.bot: No data available for /
+2025-09-03 12:45:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for U: binance does not have market symbol U
+2025-09-03 12:45:43 [WARNING] core.bot: No data available for U
+2025-09-03 12:45:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for S: binance does not have market symbol S
+2025-09-03 12:45:43 [WARNING] core.bot: No data available for S
+2025-09-03 12:45:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for D: binance does not have market symbol D
+2025-09-03 12:45:43 [WARNING] core.bot: No data available for D
+2025-09-03 12:45:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 12:45:43 [WARNING] core.bot: No data available for T
