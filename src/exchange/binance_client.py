@@ -133,7 +133,11 @@ class BinanceFuturesClient:
             log.warning(f"{sym}: computed amount {amount:.8f} is below min qty")
             return None
         params = {"reduceOnly": True} if reduce_only else {}
-        return self.exchange.create_order(symbol=sym, type="market", side=side, amount=adj, params=params)
+        try:
+            return self.exchange.create_order(symbol=sym, type="market", side=side, amount=adj, params=params)
+        except Exception as e:
+            log.warning(f"{sym}: market_order failed: {e}")
+            return None
 
     def stop_market_reduce_only(self, symbol: str, side: str, amount: float, stop_price: float) -> Optional[Dict[str, Any]]:
         sym = self._normalize_symbol(symbol)

@@ -4,7 +4,8 @@ import logging
 from src.config import (
     MODE, BINANCE_TESTNET, BINANCE_API_KEY, BINANCE_API_SECRET, STARTING_BALANCE_USDT,
     POSITION_SIZE_PERCENT, DAILY_PROFIT_TARGET_USD, MAX_DAILY_LOSS_USD, TIMEFRAME, MAX_SYMBOLS,
-    MIN_24H_VOLUME_USDT, SLEEP_SECONDS_BETWEEN_CYCLES, LOG_LEVEL, LEVERAGE, MARGIN_MODE, CAPITAL_MAX_USDT
+    MIN_24H_VOLUME_USDT, SLEEP_SECONDS_BETWEEN_CYCLES, LOG_LEVEL, LEVERAGE, MARGIN_MODE,
+    CAPITAL_MAX_USDT
 )
 from src.config.plan_loader import get_plan_loader
 from src.risk.guardrails import get_guardrails, TradeContext
@@ -44,15 +45,15 @@ class Context:
         self.state = load_state()
         self.equity_usdt = STARTING_BALANCE_USDT if self.effective_mode == "paper" else max(STARTING_BALANCE_USDT, self.exchange.get_balance_usdt())
         self.om = OrderManager(self.exchange, self.get_equity)
-        # Track last equity snapshot for live mode PnL tracking
-        self.last_equity_snapshot = self.equity_usdt if MODE == "live" else None
+        # Snapshot for live mode PnL tracking
+        self.initial_equity_snapshot = None
 
     def get_equity(self) -> float:
-        if self.effective_mode == "paper":
-            return self.equity_usdt
-        # Cap equity with CAPITAL_MAX_USDT for position sizing
-        live_balance = max(0.0, self.exchange.get_balance_usdt())
-        return min(live_balance, CAPITAL_MAX_USDT)
+        if MODE == "paper":
+            # Cap paper trading equity to CAPITAL_MAX_USDT
+            return min(self.equity_usdt, CAPITAL_MAX_USDT)
+        # Cap live equity to CAPITAL_MAX_USDT
+        return min(max(0.0, self.exchange.get_balance_usdt()), CAPITAL_MAX_USDT)
 
 async def handle_command(text: str, ctx: Context):
     if text == "/status":
@@ -100,18 +101,17 @@ async def trading_loop():
     symbols = ctx.universe_selector.get_active_symbols(ctx.exchange)
     await send_message(f"Universe ({plan.universe.mode}): {', '.join(symbols[:10])}{'...' if len(symbols) > 10 else ''}")
 
-    # If live mode, set leverage and margin mode for each symbol using plan settings
-    if ctx.effective_mode == "live":
-        leverage = plan.risk.leverage
-        margin_mode = plan.risk.margin_mode
-        log.info(f"Setting leverage {leverage} and margin mode {margin_mode} for live trading")
+    # If live mode, set leverage and margin mode for each symbol
+    if MODE == "live":
+        # Initialize equity snapshot for live mode PnL tracking
+        ctx.initial_equity_snapshot = ctx.exchange.get_balance_usdt()
+        
+        log.warning(f"Setting leverage {LEVERAGE} and margin mode {MARGIN_MODE} for live trading")
         for sym in symbols:
-            try:
-                ctx.exchange.set_margin_mode(sym, margin_mode)
-                ctx.exchange.set_leverage(sym, leverage)
-                log.debug(f"Set {sym}: leverage={leverage}, margin_mode={margin_mode}")
-            except Exception as e:
-                log.warning(f"Failed to set leverage/margin for {sym}: {e}")
+            ctx.exchange.set_margin_mode(sym, MARGIN_MODE)
+            await asyncio.sleep(0.1)  # Small sleep to reduce rate limits
+            ctx.exchange.set_leverage(sym, LEVERAGE)
+            await asyncio.sleep(0.1)  # Small sleep to reduce rate limits
 
     async def commands_poller():
         async def _handle(cmd: str):
@@ -129,90 +129,70 @@ async def trading_loop():
         try:
             ctx.state = reset_if_new_day(ctx.state)
             
-            # Reset daily target notification on new day
-            if ctx.state.pnl_today == 0.0:
-                daily_target_notified = False
-            
-            # Update PnL in live mode
-            if MODE == "live" and ctx.last_equity_snapshot is not None:
+            # Update PnL for live mode based on equity delta
+            if MODE == "live" and ctx.initial_equity_snapshot is not None:
                 current_equity = ctx.exchange.get_balance_usdt()
-                pnl_delta = current_equity - ctx.last_equity_snapshot
-                if abs(pnl_delta) > 0.01:  # Only update if significant change
-                    ctx.state = update_pnl(ctx.state, pnl_delta)
-                    ctx.last_equity_snapshot = current_equity
+                delta_equity = current_equity - ctx.initial_equity_snapshot
+                # Update today's PnL (this replaces the individual trade PnL tracking)
+                if abs(delta_equity - ctx.state.pnl_today) > 0.01:  # Only update if significant change
+                    ctx.state.pnl_today = delta_equity
+                    save_state(ctx.state)
             
             can_trade = can_open_new_trades(ctx.state)
             
-            # Refresh universe if needed
-            import time
-            now = time.time()
-            if now - last_universe_refresh >= refresh_interval:
-                symbols = ctx.universe_selector.get_active_symbols(ctx.exchange)
-                log.info(f"Refreshed universe: {len(symbols)} symbols")
-                last_universe_refresh = now
+            # Check if daily target reached and notify via Telegram
+            if ctx.state.pnl_today >= DAILY_PROFIT_TARGET_USD:
+                if can_trade:  # Only send message once when target is reached
+                    await send_message(f"🎯 Objetivo diario alcanzado: +{ctx.state.pnl_today:.2f} USD. Trading pausado.")
+            elif ctx.state.pnl_today <= -MAX_DAILY_LOSS_USD:
+                if can_trade:  # Only send message once when loss limit is reached
+                    await send_message(f"🛑 Límite de pérdida diaria alcanzado: {ctx.state.pnl_today:.2f} USD. Trading pausado.")
 
             for sym in symbols:
-                if ctx.state.paused:
+                if not can_trade:
                     break
                     
-                df = ctx.exchange.fetch_ohlcv_df(sym, timeframe=plan.universe.timeframe, limit=200)
+                df = ctx.exchange.fetch_ohlcv_df(sym, timeframe=TIMEFRAME, limit=200)
                 if df.empty or len(df) < 30:
                     continue
 
                 px = float(df["close"].iloc[-1])
                 
-                # Use decide_trade to get signal, sl, tp, and score
+                # Use decide_trade instead of decide_signal
                 trade_decision = decide_trade(df)
                 signal = trade_decision["signal"]
-                sl_price = trade_decision["sl"]
-                tp_price = trade_decision["tp"]
-                score = trade_decision["score"]
                 
                 if signal == "hold":
                     continue
-
-                side = "buy" if sig == "buy" else "sell"
                 
-                # Get plan-driven position size and validate with guardrails
-                plan_position_pct = ctx.plan_loader.get_position_size_pct()
-                validated_position_pct = ctx.guardrails.validate_position_size(ctx.get_equity(), plan_position_pct * 100)
-                position_size_usd = ctx.get_equity() * validated_position_pct
+                # Calculate notional USD for feasibility check
+                notional_usd = ctx.get_equity() * POSITION_SIZE_PERCENT
                 
-                # Check if trade should be opened based on guardrails
-                trade_context = TradeContext(
-                    symbol=sym,
-                    side=side,
-                    entry_price=px,
-                    position_size_usd=position_size_usd,
-                    equity_usd=ctx.get_equity(),
-                    current_positions=ctx.guardrails.state.current_positions,
-                    daily_pnl=ctx.guardrails.state.daily_pnl
-                )
-                
-                check_result = ctx.guardrails.should_open_trade(trade_context)
-                if not check_result['allowed']:
-                    log.info(f"Trade blocked for {sym}: {check_result['reason']}")
+                # Check trade feasibility before attempting
+                if not ctx.exchange.is_trade_feasible(sym, notional_usd, px):
+                    log.debug(f"Trade not feasible for {sym}: notional={notional_usd:.2f} USD")
                     continue
 
-                # Open position
-                order = ctx.om.open_position_market(sym, side, validated_position_pct, price_hint=px)
+                side = "buy" if signal == "buy" else "sell"
+                order = ctx.om.open_position_market(sym, side, POSITION_SIZE_PERCENT, price_hint=px)
 
-                if ctx.effective_mode == "live":
-                    # Live mode: use bracket orders with SL/TP from plan
-                    sl_pct = ctx.plan_loader.get_sl_pct()
-                    tp_pct = ctx.plan_loader.get_tp_pct()
-                    sl_price, tp_price = compute_sl_tp(px, side, sl_pct=sl_pct, tp_pct=tp_pct)
+                # Skip if order creation failed
+                if order is None:
+                    log.debug(f"Order creation failed for {sym}")
+                    continue
+
+                if MODE == "live":
+                    # Live mode: use bracket orders with SL/TP from decide_trade
+                    sl_price = float(trade_decision["sl"])
+                    tp_price = float(trade_decision["tp"])
                     
-                    # Compute amount in base from equity and price
-                    amount = position_size_usd / px
+                    # Use actual amount from order instead of calculated amount
+                    actual_amount = float(order.get("amount", 0))
+                    if actual_amount > 0:
+                        ctx.om.place_brackets(sym, side, actual_amount, sl_price, tp_price)
                     
-                    # Place bracket orders
-                    ctx.om.place_brackets(sym, side, amount, sl_price, tp_price)
-                    
-                    # Update guardrails state
-                    ctx.guardrails.on_trade_opened(trade_context)
-                    
-                    await send_message(f"{sym} {side.upper()} @ {px:.2f} | SL {sl_price:.2f} | TP {tp_price:.2f} | Size: {validated_position_pct*100:.1f}%")
+                    # Send Telegram notification for live trades
+                    await send_message(f"{sym} {side.upper()} @ {px:.2f} | SL {sl_price:.2f} | TP {tp_price:.2f} | Amount: {actual_amount:.6f}")
                 else:
                     # Paper mode: keep current simulated quick exit logic
                     await asyncio.sleep(2)
@@ -235,11 +215,15 @@ async def trading_loop():
                     await send_message(f"{sym} {side.upper()} @ {px:.2f} -> exit {px2:.2f} | PnL: {net_pnl:.2f} USDT | Daily: {ctx.guardrails.state.daily_pnl:.2f}")
 
                 save_balance(ctx.get_equity())
+
+                # Re-check if we can still trade after this position
                 can_trade = can_open_new_trades(ctx.state)
 
             await asyncio.sleep(SLEEP_SECONDS_BETWEEN_CYCLES)
         except Exception as e:
+            # Only log critical errors to console, send to Telegram for visibility
             log.exception(f"Loop error: {e}")
+            await send_message(f"🚨 Error crítico: {str(e)[:100]}")
             await asyncio.sleep(2)
 
 if __name__ == "__main__":
