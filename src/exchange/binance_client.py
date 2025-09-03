@@ -13,7 +13,7 @@ class BinanceClient:
     def __init__(self, api_key: str = API_KEY, api_secret: str = API_SECRET,
                  use_testnet: bool = USE_TESTNET, dry_run: bool = DRY_RUN):
         self.dry_run = dry_run
-        opts = {"defaultType": "future"}
+        opts = {"defaultType": "future"}  # fuerza FAPI
         self.exchange = ccxt.binance({
             "apiKey": api_key,
             "secret": api_secret,
@@ -22,7 +22,7 @@ class BinanceClient:
         })
 
         if use_testnet:
-            # Forzar URLs de la testnet oficial de Binance Futures
+            # Forzar URLs de la testnet oficial de Binance Futures (solo FAPI)
             self.exchange.options["defaultType"] = "future"
             self.exchange.urls["api"] = {
                 "public": "https://testnet.binancefuture.com/fapi/v1",
@@ -31,7 +31,11 @@ class BinanceClient:
                 "fapiPrivate": "https://testnet.binancefuture.com/fapi/v1",
                 "fapiData": "https://testnet.binancefuture.com/fapi/v1",
             }
-            logger.info("Binance testnet mode enabled (full override)")
+            # ⚡ Evitar que CCXT intente llamar DAPI (delivery futures, no existe en testnet)
+            self.exchange.urls["dapiPublic"] = None
+            self.exchange.urls["dapiPrivate"] = None
+
+            logger.info("Binance testnet mode enabled (FAPI only)")
 
     async def fetch_ohlcv(self, symbol: str, timeframe: str = "1m", limit: int = 200):
         try:
