@@ -1,7 +1,8 @@
+# Wrapper async para Binance (ccxt) con soporte testnet real (futures) y modo DRY_RUN.
 import time
 import logging
 import asyncio
-from typing import Optional, Any, List
+from typing import Optional
 import ccxt.async_support as ccxt
 
 from config.settings import API_KEY, API_SECRET, USE_TESTNET, DRY_RUN
@@ -12,29 +13,29 @@ class BinanceClient:
     def __init__(self, api_key: str = API_KEY, api_secret: str = API_SECRET,
                  use_testnet: bool = USE_TESTNET, dry_run: bool = DRY_RUN):
         self.dry_run = dry_run
-        opts = {'defaultType': 'future'}
-
-        # Inicializamos cliente Binance
+        opts = {"defaultType": "future"}
         self.exchange = ccxt.binance({
-            'apiKey': api_key,
-            'secret': api_secret,
-            'enableRateLimit': True,
-            'options': opts,
+            "apiKey": api_key,
+            "secret": api_secret,
+            "enableRateLimit": True,
+            "options": opts,
         })
 
         if use_testnet:
-            # Testnet oficial Binance Futures
-            self.exchange.options['defaultType'] = 'future'
-            self.exchange.urls['api'] = {
-                'public': 'https://testnet.binancefuture.com/fapi/v1',
-                'private': 'https://testnet.binancefuture.com/fapi/v1'
+            # Forzar URLs de la testnet oficial de Binance Futures
+            self.exchange.options["defaultType"] = "future"
+            self.exchange.urls["api"] = {
+                "public": "https://testnet.binancefuture.com/fapi/v1",
+                "private": "https://testnet.binancefuture.com/fapi/v1",
+                "fapiPublic": "https://testnet.binancefuture.com/fapi/v1",
+                "fapiPrivate": "https://testnet.binancefuture.com/fapi/v1",
+                "fapiData": "https://testnet.binancefuture.com/fapi/v1",
             }
-            logger.info("Binance testnet mode enabled")
+            logger.info("Binance testnet mode enabled (full override)")
 
-    async def fetch_ohlcv(self, symbol: str, timeframe: str = "1h", limit: int = 200):
+    async def fetch_ohlcv(self, symbol: str, timeframe: str = "1m", limit: int = 200):
         try:
-            raw = await self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=None, limit=limit)
-            return raw
+            return await self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
         except Exception as e:
             logger.exception("fetch_ohlcv error for %s: %s", symbol, e)
             return []
@@ -53,11 +54,10 @@ class BinanceClient:
                 "id": f"sim-{int(time.time()*1000)}",
                 "status": "closed",
                 "filled": amount,
-                "average": None
+                "average": None,
             }
         try:
-            order = await self.exchange.create_order(symbol, "market", side, amount)
-            return order
+            return await self.exchange.create_order(symbol, "market", side, amount)
         except Exception as e:
             logger.exception("create_market_order failed: %s", e)
             raise
@@ -69,11 +69,10 @@ class BinanceClient:
                 "id": f"sim-lim-{int(time.time()*1000)}",
                 "status": "open",
                 "price": price,
-                "amount": amount
+                "amount": amount,
             }
         try:
-            order = await self.exchange.create_order(symbol, "limit", side, amount, price)
-            return order
+            return await self.exchange.create_order(symbol, "limit", side, amount, price)
         except Exception as e:
             logger.exception("create_limit_order failed: %s", e)
             raise
@@ -101,8 +100,7 @@ class BinanceClient:
         if self.dry_run:
             return {"USDT": {"free": 10000.0, "used": 0.0, "total": 10000.0}}
         try:
-            bal = await self.exchange.fetch_balance(params={"type": "future"})
-            return bal
+            return await self.exchange.fetch_balance(params={"type": "future"})
         except Exception as e:
             logger.exception("fetch_balance error: %s", e)
             return {}
