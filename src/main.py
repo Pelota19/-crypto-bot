@@ -22,18 +22,28 @@ logger = logging.getLogger("crypto_bot")
 class Context:
     def __init__(self):
         self.exchange = BinanceFuturesClient(BINANCE_API_KEY, BINANCE_API_SECRET, testnet=BINANCE_TESTNET)
-        self.equity_usdt = STARTING_BALANCE_USDT if MODE == "paper" else max(
-            STARTING_BALANCE_USDT, self.exchange.get_balance_usdt()
-        )
+        self.equity_usdt = STARTING_BALANCE_USDT if MODE == "paper" else self._get_live_balance()
         self.om = OrderManager()
         self.pair_selector = PairSelector(self.exchange, self.get_equity)
+
+    def _get_live_balance(self) -> float:
+        """Safely get live balance with fallback."""
+        try:
+            return max(STARTING_BALANCE_USDT, self.exchange.get_balance_usdt())
+        except Exception as e:
+            logger.warning(f"Failed to get live balance, using starting balance: {e}")
+            return STARTING_BALANCE_USDT
 
     def get_equity(self) -> float:
         if MODE == "paper":
             return float(self.equity_usdt)
         # Live: consult exchange
-        bal = self.exchange.get_balance_usdt()
-        return bal if bal > 0 else float(self.equity_usdt)
+        try:
+            bal = self.exchange.get_balance_usdt()
+            return bal if bal > 0 else float(self.equity_usdt)
+        except Exception as e:
+            logger.warning(f"Failed to get live equity, using cached: {e}")
+            return float(self.equity_usdt)
 
 
 def amount_in_base(notional_usd: float, price: float) -> float:

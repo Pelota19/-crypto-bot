@@ -20,7 +20,7 @@ class BinanceFuturesClient:
         if self.testnet:
             self.exchange.set_sandbox_mode(True)
 
-        self.exchange.load_markets()
+        # Don't automatically load markets - let caller do it
 
     def _normalize_symbol(self, symbol: str) -> str:
         """
