@@ -35,7 +35,7 @@ class Context:
 
 async def handle_command(text: str, ctx: Context):
     if text == "/status":
-        msg = f"Mode: {MODE}\nEquity: {ctx.get_equity():.2f} USDT\nPNL hoy: {ctx.state.pnl_today:.2f}\nTarget: {DAILY_PROFIT_TARGET_USD:.2f} | MaxLoss: {MAX_DAILY_LOSS_USD:.2f}\nPausado: {ctx.state.paused}"
+        msg = f"Mode: {MODE}\nEquity: {ctx.get_equity():.2f} USDT\nPNL hoy: {ctx.state.pnl_today:.2f}\nTarget: {DAILY_PROFIT_TARGET_USD:.2f} | MaxLoss: {MAX_DAILY_LOSS_USD:.2f}\nPausado: {ctx.state.paused}\nTop-K: {TOP_K_SELECTION} (max {MAX_ACTIVE_SYMBOLS})"
         await send_message(msg)
     elif text == "/pause":
         ctx.state.paused = True
