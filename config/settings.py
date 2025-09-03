@@ -34,8 +34,8 @@ def _list_str(v: str) -> List[str]:
 
 # Exchange settings
 EXCHANGE = _get_env("EXCHANGE", "binance")
-API_KEY = _get_env("API_KEY", "")
-API_SECRET = _get_env("API_SECRET", "")
+API_KEY = _get_env("BINANCE_API_KEY", "")
+API_SECRET = _get_env("BINANCE_API_SECRET", "")
 USE_TESTNET = _get_env("USE_TESTNET", True, _bool)
 
 # Safety / execution
