@@ -2,8 +2,5 @@
 __pycache__/
 *.pyc
 .env
-*.db
-/data/
-.DS_Store
-test_enhancements.py
-demo_enhancements.py
+config.yml
+logs/

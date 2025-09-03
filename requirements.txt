@@ -1,6 +1,14 @@
+# Core runtime
 python-dotenv>=1.0.1
-ccxt>=4.2.0
-pandas>=2.0.0
-numpy>=1.24.0
-aiohttp>=3.9.5
-pyyaml>=6.0
+PyYAML>=6.0.2
+
+# Add your existing dependencies below (if any were already present, keep them)
+# Example:
+ccxt
+pandas
+numpy
+aiohttp
+pytest
+black
+ruff
+mypy
