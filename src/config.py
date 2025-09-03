@@ -1,57 +1,31 @@
-# Configuración simple basada en variables de entorno y rutas por defecto.
-import os
-from pathlib import Path
+# Compatibility shim: export common names expected across the codebase.
+# Import from config.settings (single source of truth).
+from config import settings as _s
 
-ROOT = Path(__file__).resolve().parent
-DATA_DIR = ROOT.parent / "data"
-DATA_DIR.mkdir(parents=True, exist_ok=True)
+# Primary settings (keep original names)
+API_KEY = _s.API_KEY
+API_SECRET = _s.API_SECRET
+USE_TESTNET = _s.USE_TESTNET
+DRY_RUN = _s.DRY_RUN
 
-AI_MODEL_PATH = str(DATA_DIR / "ai_model.json")
+# Legacy/alternate names used by some scripts
+BINANCE_API_KEY = API_KEY
+BINANCE_API_SECRET = API_SECRET
+BINANCE_TESTNET = USE_TESTNET
 
-# Exchange / trading defaults (placeholders)
-EXCHANGE = {
-    "name": os.environ.get("EXCHANGE_NAME", "paper_exchange"),
-}
+# Risk / sizing
+MAX_INVESTMENT = _s.MAX_INVESTMENT
+MAX_RISK_PER_TRADE = _s.MAX_RISK_PER_TRADE
+DAILY_PROFIT_TARGET = _s.DAILY_PROFIT_TARGET
+CAPITAL_MAX_USDT = _s.CAPITAL_MAX_USDT
 
-# Telegram (opcional)
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+# Logging
+LOG_LEVEL = _s.LOG_LEVEL
 
-# Risk defaults
-DEFAULT_RISK_PCT = float(os.environ.get("DEFAULT_RISK_PCT", "0.01"))  # 1% por operación
-
-_raw_pct = float(os.getenv("POSITION_SIZE_PERCENT", "1.0"))
-# Interpretación: valores >=1 se tratan como porcentaje (1 = 1% => 0.01). Valores <1 como fracción.
-POSITION_SIZE_PERCENT = (_raw_pct / 100.0) if _raw_pct >= 1 else _raw_pct
-
-# Objetivos diarios
-DAILY_PROFIT_TARGET_USD = float(os.getenv("DAILY_PROFIT_TARGET_USD", "50.0"))
-MAX_DAILY_LOSS_USD = float(os.getenv("MAX_DAILY_LOSS_USD", "100.0"))
-
-# Leverage/Margin (para LIVE en testnet)
-LEVERAGE = int(os.getenv("LEVERAGE", "5"))
-MARGIN_MODE = os.getenv("MARGIN_MODE", "ISOLATED")  # ISOLATED o CROSSED
-
-# Universo y scheduling
-TIMEFRAME = os.getenv("TIMEFRAME", "1m")
-MAX_SYMBOLS = int(os.getenv("MAX_SYMBOLS", "10"))
-MIN_24H_VOLUME_USDT = float(os.getenv("MIN_24H_VOLUME_USDT", "5000000"))  # 5M USDT
-SLEEP_SECONDS_BETWEEN_CYCLES = int(os.getenv("SLEEP_SECONDS_BETWEEN_CYCLES", "5"))
-DAILY_RESET_HOUR_UTC = int(os.getenv("DAILY_RESET_HOUR_UTC", "0"))  # 00:00 UTC
+# Paths
+DATA_DIR = _s.DATA_DIR
+LOGS_DIR = _s.LOGS_DIR
 
 # Telegram
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
-
-# Top-K symbol selection
-MAX_ACTIVE_SYMBOLS = int(os.getenv("MAX_ACTIVE_SYMBOLS", "5"))
-MIN_NOTIONAL_USD = float(os.getenv("MIN_NOTIONAL_USD", "10.0"))
-TOP_K_SELECTION = _bool(os.getenv("TOP_K_SELECTION", "true"), True)
-
-# Miscelánea
-# Por defecto WARNING para no spamear la shell. Telegram será el canal principal.
-LOG_LEVEL = os.getenv("LOG_LEVEL", "WARNING")
-DATA_DIR = os.getenv("DATA_DIR", "data")
-DB_PATH = os.getenv("DB_PATH", os.path.join(DATA_DIR, "crypto_bot.db"))
-STATE_PATH = os.getenv("STATE_PATH", os.path.join(DATA_DIR, "state.json"))
-AI_MODEL_PATH = os.getenv("AI_MODEL_PATH", os.path.join(DATA_DIR, "ai_model.json"))
+TELEGRAM_BOT_TOKEN = _s.TELEGRAM_BOT_TOKEN
+TELEGRAM_CHAT_ID = _s.TELEGRAM_CHAT_ID
