@@ -1,2 +1,20 @@
-# Dependencias mínimas
-python-dotenv
+# Dependencias principales
+asyncio
+logging
+signal
+sys
+python-dotenv  # Manejo de variables de entorno
+pandas  # Análisis de datos
+numpy  # Cálculos numéricos
+pytest  # Testing
+unittest  # Testing adicional
+aiohttp  # Cliente HTTP asíncrono
+websockets  # Soporte para WebSockets
+requests  # Cliente HTTP síncrono
+ccxt  # Interacción con exchanges de criptomonedas
+# Telegram
+python-telegram-bot  # Integración con Telegram
+
+# Soporte/Utilidades
+loguru  # Logger avanzado
+schedule  # Programación de tareas recurrentes
