@@ -39,7 +39,7 @@ API_SECRET = _get_env("API_SECRET", "")
 USE_TESTNET = _get_env("USE_TESTNET", True, _bool)
 
 # Trading settings
-DAILY_PROFIT_TARGET = _get_env("DAILY_PROFIT_TARGET", 30.0, _float)
+DAILY_PROFIT_TARGET = _get_env("DAILY_PROFIT_TARGET", 50.0, _float)
 MAX_INVESTMENT = _get_env("MAX_INVESTMENT", 2000.0, _float)
 TRADING_PAIRS = _get_env("TRADING_PAIRS", "BTC/USDT,ETH/USDT", _list_str)
 STRATEGY = _get_env("STRATEGY", "scalping_ema_rsi")
@@ -56,6 +56,10 @@ TELEGRAM_CHAT_ID = _get_env("TELEGRAM_CHAT_ID", "")
 
 # Logging
 LOG_LEVEL = _get_env("LOG_LEVEL", "INFO")
+
+# Safety / execution
+DRY_RUN = _get_env("DRY_RUN", True, _bool)  # True = no real orders (recommended to test)
+ORDER_TIMEOUT = _get_env("ORDER_TIMEOUT", 30, _int)  # seconds to wait for fills
 
 # Paths
 DATA_DIR = Path("data")
