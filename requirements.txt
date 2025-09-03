@@ -1,2 +1,5 @@
 # Dependencias mínimas
 python-dotenv
+ccxt
+pandas
+numpy
