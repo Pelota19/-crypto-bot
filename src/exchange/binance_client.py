@@ -126,11 +126,12 @@ class BinanceFuturesClient:
             log.warning(f"fetch_balance failed: {e}")
             return 0.0
 
-    def market_order(self, symbol: str, side: str, amount: float, reduce_only: bool = False, price_hint: Optional[float] = None) -> Dict[str, Any]:
+    def market_order(self, symbol: str, side: str, amount: float, reduce_only: bool = False, price_hint: Optional[float] = None) -> Optional[Dict[str, Any]]:
         sym = self._normalize_symbol(symbol)
         adj = self.amount_adjust(sym, amount)
         if adj <= 0:
-            raise ValueError(f"{sym}: computed amount {amount:.8f} is below min qty")
+            log.warning(f"{sym}: computed amount {amount:.8f} is below min qty")
+            return None
         params = {"reduceOnly": True} if reduce_only else {}
         return self.exchange.create_order(symbol=sym, type="market", side=side, amount=adj, params=params)
 
