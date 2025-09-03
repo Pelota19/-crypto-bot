@@ -18,11 +18,24 @@ class OrderManager:
         if amount <= 0:
             log.warning("Amount computed is zero; skipping order")
             return None
-        order = self.x.market_order(symbol, side, amount)
-        fee = float(order.get("fees", [{}])[0].get("cost", 0.0)) if order.get("fees") else 0.0
-        save_order(symbol, side, float(order.get("price") or price), float(amount), fee, order.get("status", "unknown"))
-        log.info(f"Opened {side} {symbol} amount={amount}")
-        return order
+        
+        try:
+            order = self.x.market_order(symbol, side, amount)
+            if order is None:
+                log.warning(f"Market order returned None for {symbol}")
+                return None
+                
+            # Use actual order amount and price if available
+            actual_amount = float(order.get("amount", amount))
+            actual_price = float(order.get("price", price))
+            fee = float(order.get("fees", [{}])[0].get("cost", 0.0)) if order.get("fees") else 0.0
+            
+            save_order(symbol, side, actual_price, actual_amount, fee, order.get("status", "unknown"))
+            log.info(f"Opened {side} {symbol} amount={actual_amount}")
+            return order
+        except Exception as e:
+            log.warning(f"Failed to open market order for {symbol}: {e}")
+            return None
 
     def close_position_market(self, symbol: str, side: str, amount: float):
         # reduceOnly = True para cerrar
@@ -36,42 +49,31 @@ class OrderManager:
     def place_brackets(self, symbol: str, entry_side: str, amount: float, sl_price: float, tp_price: float):
         """Place SL and TP bracket orders as conditional reduceOnly orders."""
         try:
-            # Stop Loss - STOP_MARKET order
+            # Stop Loss using exchange wrapper method
             sl_side = "sell" if entry_side == "buy" else "buy"
-            sl_params = {
-                "reduceOnly": True,
-                "stopPrice": sl_price,
-                "workingType": "CONTRACT_PRICE",
-                "timeInForce": "GTC"
-            }
-            sl_order = self.x.exchange.create_order(
-                symbol=symbol, 
-                type="STOP_MARKET", 
-                side=sl_side, 
-                amount=amount, 
-                params=sl_params
-            )
-            save_order(symbol, sl_side, sl_price, amount, 0.0, sl_order.get("status", "unknown"))
-            log.info(f"Placed SL bracket: {sl_side} {symbol} @ {sl_price}")
+            sl_order = self.x.stop_market_reduce_only(symbol, sl_side, amount, sl_price)
+            
+            if sl_order is None:
+                log.warning(f"Stop loss order returned None for {symbol}")
+            else:
+                # Use actual amount from exchange if available
+                actual_sl_amount = float(sl_order.get("amount", amount))
+                save_order(symbol, sl_side, sl_price, actual_sl_amount, 0.0, sl_order.get("status", "unknown"))
+                log.info(f"Placed SL bracket: {sl_side} {symbol} @ {sl_price}")
 
-            # Take Profit - TAKE_PROFIT_MARKET order
+            # Take Profit using exchange wrapper method
             tp_side = "sell" if entry_side == "buy" else "buy"
-            tp_params = {
-                "reduceOnly": True,
-                "stopPrice": tp_price,
-                "workingType": "CONTRACT_PRICE",
-                "timeInForce": "GTC"
-            }
-            tp_order = self.x.exchange.create_order(
-                symbol=symbol, 
-                type="TAKE_PROFIT_MARKET", 
-                side=tp_side, 
-                amount=amount, 
-                params=tp_params
-            )
-            save_order(symbol, tp_side, tp_price, amount, 0.0, tp_order.get("status", "unknown"))
-            log.info(f"Placed TP bracket: {tp_side} {symbol} @ {tp_price}")
+            tp_order = self.x.take_profit_market_reduce_only(symbol, tp_side, amount, tp_price)
+            
+            if tp_order is None:
+                log.warning(f"Take profit order returned None for {symbol}")
+            else:
+                # Use actual amount from exchange if available
+                actual_tp_amount = float(tp_order.get("amount", amount))
+                save_order(symbol, tp_side, tp_price, actual_tp_amount, 0.0, tp_order.get("status", "unknown"))
+                log.info(f"Placed TP bracket: {tp_side} {symbol} @ {tp_price}")
 
+            # Return results even if some orders failed
             return {"sl_order": sl_order, "tp_order": tp_order}
         except Exception as e:
             log.warning(f"Failed to place brackets for {symbol}: {e}")
