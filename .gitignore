@@ -5,3 +5,5 @@ __pycache__/
 *.db
 /data/
 .DS_Store
+test_enhancements.py
+demo_enhancements.py
