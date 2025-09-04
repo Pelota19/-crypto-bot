@@ -253,3 +253,940 @@
 2025-09-03 12:45:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for S: binance does not have market symbol S
 2025-09-03 12:45:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for D: binance does not have market symbol D
 2025-09-03 12:45:43 [ERROR] exchanges.binance: Failed to fetch OHLCV for T: binance does not have market symbol T
+2025-09-03 21:01:33 [ERROR] src.exchange.binance_client: fetch_balance error: binance does not have a testnet/sandbox URL for fapiPublic endpoints
+Traceback (most recent call last):
+  File "/home/ubuntu/crypto_bot/src/exchange/binance_client.py", line 104, in fetch_balance
+    bal = await self.exchange.fetch_balance(params={"type": "future"})
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3602, in fetch_balance
+    await self.load_markets()
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 338, in load_markets
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 330, in load_markets
+    result = await self.markets_loading
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 297, in load_markets_helper
+    markets = await self.fetch_markets(params)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3061, in fetch_markets
+    results = await asyncio.gather(*promisesRaw)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11401, in request
+    response = await self.fetch2(path, api, method, params, headers, body, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 957, in fetch2
+    request = self.sign(path, api, method, params, headers, body)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11189, in sign
+    raise NotSupported(self.id + ' does not have a testnet/sandbox URL for ' + api + ' endpoints')
+ccxt.base.errors.NotSupported: binance does not have a testnet/sandbox URL for fapiPublic endpoints
+2025-09-03 21:01:33 [ERROR] src.exchange.binance_client: fetch_ohlcv error for BTC/USDT: binance does not have a testnet/sandbox URL for fapiPublic endpoints
+Traceback (most recent call last):
+  File "/home/ubuntu/crypto_bot/src/exchange/binance_client.py", line 36, in fetch_ohlcv
+    raw = await self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=None, limit=limit)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 4499, in fetch_ohlcv
+    await self.load_markets()
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 338, in load_markets
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 330, in load_markets
+    result = await self.markets_loading
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 297, in load_markets_helper
+    markets = await self.fetch_markets(params)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3061, in fetch_markets
+    results = await asyncio.gather(*promisesRaw)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11401, in request
+    response = await self.fetch2(path, api, method, params, headers, body, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 957, in fetch2
+    request = self.sign(path, api, method, params, headers, body)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11189, in sign
+    raise NotSupported(self.id + ' does not have a testnet/sandbox URL for ' + api + ' endpoints')
+ccxt.base.errors.NotSupported: binance does not have a testnet/sandbox URL for fapiPublic endpoints
+2025-09-03 21:01:33 [ERROR] src.exchange.binance_client: fetch_ohlcv error for ETH/USDT: binance does not have a testnet/sandbox URL for fapiPublic endpoints
+Traceback (most recent call last):
+  File "/home/ubuntu/crypto_bot/src/exchange/binance_client.py", line 36, in fetch_ohlcv
+    raw = await self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=None, limit=limit)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 4499, in fetch_ohlcv
+    await self.load_markets()
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 338, in load_markets
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 330, in load_markets
+    result = await self.markets_loading
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 297, in load_markets_helper
+    markets = await self.fetch_markets(params)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3061, in fetch_markets
+    results = await asyncio.gather(*promisesRaw)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11401, in request
+    response = await self.fetch2(path, api, method, params, headers, body, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 957, in fetch2
+    request = self.sign(path, api, method, params, headers, body)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11189, in sign
+    raise NotSupported(self.id + ' does not have a testnet/sandbox URL for ' + api + ' endpoints')
+ccxt.base.errors.NotSupported: binance does not have a testnet/sandbox URL for fapiPublic endpoints
+2025-09-03 21:01:35 [ERROR] src.exchange.binance_client: fetch_balance error: binance does not have a testnet/sandbox URL for fapiPublic endpoints
+Traceback (most recent call last):
+  File "/home/ubuntu/crypto_bot/src/exchange/binance_client.py", line 104, in fetch_balance
+    bal = await self.exchange.fetch_balance(params={"type": "future"})
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3602, in fetch_balance
+    await self.load_markets()
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 338, in load_markets
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 330, in load_markets
+    result = await self.markets_loading
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 297, in load_markets_helper
+    markets = await self.fetch_markets(params)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3061, in fetch_markets
+    results = await asyncio.gather(*promisesRaw)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11401, in request
+    response = await self.fetch2(path, api, method, params, headers, body, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 957, in fetch2
+    request = self.sign(path, api, method, params, headers, body)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11189, in sign
+    raise NotSupported(self.id + ' does not have a testnet/sandbox URL for ' + api + ' endpoints')
+ccxt.base.errors.NotSupported: binance does not have a testnet/sandbox URL for fapiPublic endpoints
+2025-09-03 21:01:35 [ERROR] src.exchange.binance_client: fetch_ohlcv error for BTC/USDT: binance does not have a testnet/sandbox URL for fapiPublic endpoints
+Traceback (most recent call last):
+  File "/home/ubuntu/crypto_bot/src/exchange/binance_client.py", line 36, in fetch_ohlcv
+    raw = await self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=None, limit=limit)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 4499, in fetch_ohlcv
+    await self.load_markets()
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 338, in load_markets
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 330, in load_markets
+    result = await self.markets_loading
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 297, in load_markets_helper
+    markets = await self.fetch_markets(params)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3061, in fetch_markets
+    results = await asyncio.gather(*promisesRaw)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11401, in request
+    response = await self.fetch2(path, api, method, params, headers, body, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 957, in fetch2
+    request = self.sign(path, api, method, params, headers, body)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11189, in sign
+    raise NotSupported(self.id + ' does not have a testnet/sandbox URL for ' + api + ' endpoints')
+ccxt.base.errors.NotSupported: binance does not have a testnet/sandbox URL for fapiPublic endpoints
+2025-09-03 21:01:36 [ERROR] src.exchange.binance_client: fetch_ohlcv error for ETH/USDT: binance does not have a testnet/sandbox URL for fapiPublic endpoints
+Traceback (most recent call last):
+  File "/home/ubuntu/crypto_bot/src/exchange/binance_client.py", line 36, in fetch_ohlcv
+    raw = await self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=None, limit=limit)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 4499, in fetch_ohlcv
+    await self.load_markets()
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 338, in load_markets
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 330, in load_markets
+    result = await self.markets_loading
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 297, in load_markets_helper
+    markets = await self.fetch_markets(params)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3061, in fetch_markets
+    results = await asyncio.gather(*promisesRaw)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11401, in request
+    response = await self.fetch2(path, api, method, params, headers, body, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 957, in fetch2
+    request = self.sign(path, api, method, params, headers, body)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11189, in sign
+    raise NotSupported(self.id + ' does not have a testnet/sandbox URL for ' + api + ' endpoints')
+ccxt.base.errors.NotSupported: binance does not have a testnet/sandbox URL for fapiPublic endpoints
+2025-09-03 21:01:37 [ERROR] src.exchange.binance_client: fetch_balance error: binance does not have a testnet/sandbox URL for fapiPublic endpoints
+Traceback (most recent call last):
+  File "/home/ubuntu/crypto_bot/src/exchange/binance_client.py", line 104, in fetch_balance
+    bal = await self.exchange.fetch_balance(params={"type": "future"})
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3602, in fetch_balance
+    await self.load_markets()
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 338, in load_markets
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 330, in load_markets
+    result = await self.markets_loading
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 297, in load_markets_helper
+    markets = await self.fetch_markets(params)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3061, in fetch_markets
+    results = await asyncio.gather(*promisesRaw)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11401, in request
+    response = await self.fetch2(path, api, method, params, headers, body, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 957, in fetch2
+    request = self.sign(path, api, method, params, headers, body)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11189, in sign
+    raise NotSupported(self.id + ' does not have a testnet/sandbox URL for ' + api + ' endpoints')
+ccxt.base.errors.NotSupported: binance does not have a testnet/sandbox URL for fapiPublic endpoints
+2025-09-03 21:01:37 [ERROR] src.exchange.binance_client: fetch_ohlcv error for BTC/USDT: binance does not have a testnet/sandbox URL for fapiPublic endpoints
+Traceback (most recent call last):
+  File "/home/ubuntu/crypto_bot/src/exchange/binance_client.py", line 36, in fetch_ohlcv
+    raw = await self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=None, limit=limit)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 4499, in fetch_ohlcv
+    await self.load_markets()
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 338, in load_markets
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 330, in load_markets
+    result = await self.markets_loading
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 297, in load_markets_helper
+    markets = await self.fetch_markets(params)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3061, in fetch_markets
+    results = await asyncio.gather(*promisesRaw)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11401, in request
+    response = await self.fetch2(path, api, method, params, headers, body, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 957, in fetch2
+    request = self.sign(path, api, method, params, headers, body)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11189, in sign
+    raise NotSupported(self.id + ' does not have a testnet/sandbox URL for ' + api + ' endpoints')
+ccxt.base.errors.NotSupported: binance does not have a testnet/sandbox URL for fapiPublic endpoints
+2025-09-03 21:01:38 [ERROR] src.exchange.binance_client: fetch_ohlcv error for ETH/USDT: binance does not have a testnet/sandbox URL for fapiPublic endpoints
+Traceback (most recent call last):
+  File "/home/ubuntu/crypto_bot/src/exchange/binance_client.py", line 36, in fetch_ohlcv
+    raw = await self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=None, limit=limit)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 4499, in fetch_ohlcv
+    await self.load_markets()
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 338, in load_markets
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 330, in load_markets
+    result = await self.markets_loading
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 297, in load_markets_helper
+    markets = await self.fetch_markets(params)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3061, in fetch_markets
+    results = await asyncio.gather(*promisesRaw)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11401, in request
+    response = await self.fetch2(path, api, method, params, headers, body, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 957, in fetch2
+    request = self.sign(path, api, method, params, headers, body)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11189, in sign
+    raise NotSupported(self.id + ' does not have a testnet/sandbox URL for ' + api + ' endpoints')
+ccxt.base.errors.NotSupported: binance does not have a testnet/sandbox URL for fapiPublic endpoints
+2025-09-03 21:01:39 [ERROR] src.exchange.binance_client: fetch_balance error: binance does not have a testnet/sandbox URL for fapiPublic endpoints
+Traceback (most recent call last):
+  File "/home/ubuntu/crypto_bot/src/exchange/binance_client.py", line 104, in fetch_balance
+    bal = await self.exchange.fetch_balance(params={"type": "future"})
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3602, in fetch_balance
+    await self.load_markets()
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 338, in load_markets
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 330, in load_markets
+    result = await self.markets_loading
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 297, in load_markets_helper
+    markets = await self.fetch_markets(params)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3061, in fetch_markets
+    results = await asyncio.gather(*promisesRaw)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11401, in request
+    response = await self.fetch2(path, api, method, params, headers, body, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 957, in fetch2
+    request = self.sign(path, api, method, params, headers, body)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11189, in sign
+    raise NotSupported(self.id + ' does not have a testnet/sandbox URL for ' + api + ' endpoints')
+ccxt.base.errors.NotSupported: binance does not have a testnet/sandbox URL for fapiPublic endpoints
+2025-09-03 21:01:40 [ERROR] src.exchange.binance_client: fetch_ohlcv error for BTC/USDT: binance does not have a testnet/sandbox URL for fapiPublic endpoints
+Traceback (most recent call last):
+  File "/home/ubuntu/crypto_bot/src/exchange/binance_client.py", line 36, in fetch_ohlcv
+    raw = await self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=None, limit=limit)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 4499, in fetch_ohlcv
+    await self.load_markets()
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 338, in load_markets
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 330, in load_markets
+    result = await self.markets_loading
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 297, in load_markets_helper
+    markets = await self.fetch_markets(params)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3061, in fetch_markets
+    results = await asyncio.gather(*promisesRaw)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11401, in request
+    response = await self.fetch2(path, api, method, params, headers, body, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 957, in fetch2
+    request = self.sign(path, api, method, params, headers, body)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11189, in sign
+    raise NotSupported(self.id + ' does not have a testnet/sandbox URL for ' + api + ' endpoints')
+ccxt.base.errors.NotSupported: binance does not have a testnet/sandbox URL for fapiPublic endpoints
+2025-09-03 21:01:40 [ERROR] src.exchange.binance_client: fetch_ohlcv error for ETH/USDT: binance does not have a testnet/sandbox URL for fapiPublic endpoints
+Traceback (most recent call last):
+  File "/home/ubuntu/crypto_bot/src/exchange/binance_client.py", line 36, in fetch_ohlcv
+    raw = await self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=None, limit=limit)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 4499, in fetch_ohlcv
+    await self.load_markets()
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 338, in load_markets
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 330, in load_markets
+    result = await self.markets_loading
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 297, in load_markets_helper
+    markets = await self.fetch_markets(params)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3061, in fetch_markets
+    results = await asyncio.gather(*promisesRaw)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11401, in request
+    response = await self.fetch2(path, api, method, params, headers, body, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 957, in fetch2
+    request = self.sign(path, api, method, params, headers, body)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11189, in sign
+    raise NotSupported(self.id + ' does not have a testnet/sandbox URL for ' + api + ' endpoints')
+ccxt.base.errors.NotSupported: binance does not have a testnet/sandbox URL for fapiPublic endpoints
+2025-09-03 21:05:34 [ERROR] src.exchange.binance_client: fetch_balance error: binance does not have a testnet/sandbox URL for dapiPublic endpoints
+Traceback (most recent call last):
+  File "/home/ubuntu/crypto_bot/src/exchange/binance_client.py", line 103, in fetch_balance
+    return await self.exchange.fetch_balance(params={"type": "future"})
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3602, in fetch_balance
+    await self.load_markets()
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 338, in load_markets
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 330, in load_markets
+    result = await self.markets_loading
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 297, in load_markets_helper
+    markets = await self.fetch_markets(params)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3061, in fetch_markets
+    results = await asyncio.gather(*promisesRaw)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11401, in request
+    response = await self.fetch2(path, api, method, params, headers, body, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 957, in fetch2
+    request = self.sign(path, api, method, params, headers, body)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11189, in sign
+    raise NotSupported(self.id + ' does not have a testnet/sandbox URL for ' + api + ' endpoints')
+ccxt.base.errors.NotSupported: binance does not have a testnet/sandbox URL for dapiPublic endpoints
+2025-09-03 21:05:34 [ERROR] src.exchange.binance_client: fetch_ohlcv error for BTC/USDT: binance does not have a testnet/sandbox URL for dapiPublic endpoints
+Traceback (most recent call last):
+  File "/home/ubuntu/crypto_bot/src/exchange/binance_client.py", line 38, in fetch_ohlcv
+    return await self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 4499, in fetch_ohlcv
+    await self.load_markets()
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 338, in load_markets
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 330, in load_markets
+    result = await self.markets_loading
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 297, in load_markets_helper
+    markets = await self.fetch_markets(params)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3061, in fetch_markets
+    results = await asyncio.gather(*promisesRaw)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11401, in request
+    response = await self.fetch2(path, api, method, params, headers, body, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 957, in fetch2
+    request = self.sign(path, api, method, params, headers, body)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11189, in sign
+    raise NotSupported(self.id + ' does not have a testnet/sandbox URL for ' + api + ' endpoints')
+ccxt.base.errors.NotSupported: binance does not have a testnet/sandbox URL for dapiPublic endpoints
+2025-09-03 21:05:35 [ERROR] src.exchange.binance_client: fetch_ohlcv error for ETH/USDT: binance does not have a testnet/sandbox URL for dapiPublic endpoints
+Traceback (most recent call last):
+  File "/home/ubuntu/crypto_bot/src/exchange/binance_client.py", line 38, in fetch_ohlcv
+    return await self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 4499, in fetch_ohlcv
+    await self.load_markets()
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 338, in load_markets
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 330, in load_markets
+    result = await self.markets_loading
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 297, in load_markets_helper
+    markets = await self.fetch_markets(params)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3061, in fetch_markets
+    results = await asyncio.gather(*promisesRaw)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11401, in request
+    response = await self.fetch2(path, api, method, params, headers, body, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 957, in fetch2
+    request = self.sign(path, api, method, params, headers, body)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11189, in sign
+    raise NotSupported(self.id + ' does not have a testnet/sandbox URL for ' + api + ' endpoints')
+ccxt.base.errors.NotSupported: binance does not have a testnet/sandbox URL for dapiPublic endpoints
+2025-09-03 21:05:36 [ERROR] src.exchange.binance_client: fetch_balance error: binance does not have a testnet/sandbox URL for dapiPublic endpoints
+Traceback (most recent call last):
+  File "/home/ubuntu/crypto_bot/src/exchange/binance_client.py", line 103, in fetch_balance
+    return await self.exchange.fetch_balance(params={"type": "future"})
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3602, in fetch_balance
+    await self.load_markets()
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 338, in load_markets
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 330, in load_markets
+    result = await self.markets_loading
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 297, in load_markets_helper
+    markets = await self.fetch_markets(params)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3061, in fetch_markets
+    results = await asyncio.gather(*promisesRaw)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11401, in request
+    response = await self.fetch2(path, api, method, params, headers, body, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 957, in fetch2
+    request = self.sign(path, api, method, params, headers, body)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11189, in sign
+    raise NotSupported(self.id + ' does not have a testnet/sandbox URL for ' + api + ' endpoints')
+ccxt.base.errors.NotSupported: binance does not have a testnet/sandbox URL for dapiPublic endpoints
+2025-09-03 21:05:37 [ERROR] src.exchange.binance_client: fetch_ohlcv error for BTC/USDT: binance does not have a testnet/sandbox URL for dapiPublic endpoints
+Traceback (most recent call last):
+  File "/home/ubuntu/crypto_bot/src/exchange/binance_client.py", line 38, in fetch_ohlcv
+    return await self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 4499, in fetch_ohlcv
+    await self.load_markets()
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 338, in load_markets
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 330, in load_markets
+    result = await self.markets_loading
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 297, in load_markets_helper
+    markets = await self.fetch_markets(params)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3061, in fetch_markets
+    results = await asyncio.gather(*promisesRaw)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11401, in request
+    response = await self.fetch2(path, api, method, params, headers, body, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 957, in fetch2
+    request = self.sign(path, api, method, params, headers, body)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11189, in sign
+    raise NotSupported(self.id + ' does not have a testnet/sandbox URL for ' + api + ' endpoints')
+ccxt.base.errors.NotSupported: binance does not have a testnet/sandbox URL for dapiPublic endpoints
+2025-09-03 21:05:37 [ERROR] src.exchange.binance_client: fetch_ohlcv error for ETH/USDT: binance does not have a testnet/sandbox URL for dapiPublic endpoints
+Traceback (most recent call last):
+  File "/home/ubuntu/crypto_bot/src/exchange/binance_client.py", line 38, in fetch_ohlcv
+    return await self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 4499, in fetch_ohlcv
+    await self.load_markets()
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 338, in load_markets
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 330, in load_markets
+    result = await self.markets_loading
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 297, in load_markets_helper
+    markets = await self.fetch_markets(params)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3061, in fetch_markets
+    results = await asyncio.gather(*promisesRaw)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11401, in request
+    response = await self.fetch2(path, api, method, params, headers, body, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 957, in fetch2
+    request = self.sign(path, api, method, params, headers, body)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11189, in sign
+    raise NotSupported(self.id + ' does not have a testnet/sandbox URL for ' + api + ' endpoints')
+ccxt.base.errors.NotSupported: binance does not have a testnet/sandbox URL for dapiPublic endpoints
+2025-09-03 21:05:39 [ERROR] src.exchange.binance_client: fetch_balance error: binance does not have a testnet/sandbox URL for dapiPublic endpoints
+Traceback (most recent call last):
+  File "/home/ubuntu/crypto_bot/src/exchange/binance_client.py", line 103, in fetch_balance
+    return await self.exchange.fetch_balance(params={"type": "future"})
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3602, in fetch_balance
+    await self.load_markets()
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 338, in load_markets
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 330, in load_markets
+    result = await self.markets_loading
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 297, in load_markets_helper
+    markets = await self.fetch_markets(params)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3061, in fetch_markets
+    results = await asyncio.gather(*promisesRaw)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11401, in request
+    response = await self.fetch2(path, api, method, params, headers, body, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 957, in fetch2
+    request = self.sign(path, api, method, params, headers, body)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11189, in sign
+    raise NotSupported(self.id + ' does not have a testnet/sandbox URL for ' + api + ' endpoints')
+ccxt.base.errors.NotSupported: binance does not have a testnet/sandbox URL for dapiPublic endpoints
+2025-09-03 21:05:39 [ERROR] src.exchange.binance_client: fetch_ohlcv error for BTC/USDT: binance does not have a testnet/sandbox URL for dapiPublic endpoints
+Traceback (most recent call last):
+  File "/home/ubuntu/crypto_bot/src/exchange/binance_client.py", line 38, in fetch_ohlcv
+    return await self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 4499, in fetch_ohlcv
+    await self.load_markets()
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 338, in load_markets
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 330, in load_markets
+    result = await self.markets_loading
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 297, in load_markets_helper
+    markets = await self.fetch_markets(params)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3061, in fetch_markets
+    results = await asyncio.gather(*promisesRaw)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11401, in request
+    response = await self.fetch2(path, api, method, params, headers, body, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 957, in fetch2
+    request = self.sign(path, api, method, params, headers, body)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11189, in sign
+    raise NotSupported(self.id + ' does not have a testnet/sandbox URL for ' + api + ' endpoints')
+ccxt.base.errors.NotSupported: binance does not have a testnet/sandbox URL for dapiPublic endpoints
+2025-09-03 21:12:09 [ERROR] src.exchange.binance_client: fetch_balance error: binance does not have a testnet/sandbox URL for dapiPublic endpoints
+Traceback (most recent call last):
+  File "/home/ubuntu/crypto_bot/src/exchange/binance_client.py", line 107, in fetch_balance
+    return await self.exchange.fetch_balance(params={"type": "future"})
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3602, in fetch_balance
+    await self.load_markets()
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 338, in load_markets
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 330, in load_markets
+    result = await self.markets_loading
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 297, in load_markets_helper
+    markets = await self.fetch_markets(params)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3061, in fetch_markets
+    results = await asyncio.gather(*promisesRaw)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11401, in request
+    response = await self.fetch2(path, api, method, params, headers, body, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 957, in fetch2
+    request = self.sign(path, api, method, params, headers, body)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11189, in sign
+    raise NotSupported(self.id + ' does not have a testnet/sandbox URL for ' + api + ' endpoints')
+ccxt.base.errors.NotSupported: binance does not have a testnet/sandbox URL for dapiPublic endpoints
+2025-09-03 21:12:09 [ERROR] src.exchange.binance_client: fetch_ohlcv error for BTC/USDT: binance does not have a testnet/sandbox URL for dapiPublic endpoints
+Traceback (most recent call last):
+  File "/home/ubuntu/crypto_bot/src/exchange/binance_client.py", line 42, in fetch_ohlcv
+    return await self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 4499, in fetch_ohlcv
+    await self.load_markets()
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 338, in load_markets
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 330, in load_markets
+    result = await self.markets_loading
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 297, in load_markets_helper
+    markets = await self.fetch_markets(params)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3061, in fetch_markets
+    results = await asyncio.gather(*promisesRaw)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11401, in request
+    response = await self.fetch2(path, api, method, params, headers, body, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 957, in fetch2
+    request = self.sign(path, api, method, params, headers, body)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11189, in sign
+    raise NotSupported(self.id + ' does not have a testnet/sandbox URL for ' + api + ' endpoints')
+ccxt.base.errors.NotSupported: binance does not have a testnet/sandbox URL for dapiPublic endpoints
+2025-09-03 21:12:09 [ERROR] src.exchange.binance_client: fetch_ohlcv error for ETH/USDT: binance does not have a testnet/sandbox URL for dapiPublic endpoints
+Traceback (most recent call last):
+  File "/home/ubuntu/crypto_bot/src/exchange/binance_client.py", line 42, in fetch_ohlcv
+    return await self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 4499, in fetch_ohlcv
+    await self.load_markets()
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 338, in load_markets
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 330, in load_markets
+    result = await self.markets_loading
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 297, in load_markets_helper
+    markets = await self.fetch_markets(params)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3061, in fetch_markets
+    results = await asyncio.gather(*promisesRaw)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11401, in request
+    response = await self.fetch2(path, api, method, params, headers, body, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 957, in fetch2
+    request = self.sign(path, api, method, params, headers, body)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11189, in sign
+    raise NotSupported(self.id + ' does not have a testnet/sandbox URL for ' + api + ' endpoints')
+ccxt.base.errors.NotSupported: binance does not have a testnet/sandbox URL for dapiPublic endpoints
+2025-09-03 21:36:25 [ERROR] src.exchange.binance_client: fetch_balance error: binance GET https://testnet.binancefuture.com/exchangeInfo 404  {"timestamp":1756935385222,"status":404,"error":"Not Found","message":"No message available","path":"/exchangeInfo"}
+Traceback (most recent call last):
+  File "/home/ubuntu/crypto_bot/src/exchange/binance_client.py", line 123, in fetch_balance
+    return await self.exchange.fetch_balance(params={"type": "future"})
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3602, in fetch_balance
+    await self.load_markets()
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 338, in load_markets
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 330, in load_markets
+    result = await self.markets_loading
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 297, in load_markets_helper
+    markets = await self.fetch_markets(params)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3061, in fetch_markets
+    results = await asyncio.gather(*promisesRaw)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11401, in request
+    response = await self.fetch2(path, api, method, params, headers, body, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 972, in fetch2
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 963, in fetch2
+    return await self.fetch(request['url'], request['method'], request['headers'], request['body'])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 264, in fetch
+    self.handle_http_status_code(http_status_code, http_status_text, url, method, http_response)
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 1736, in handle_http_status_code
+    raise ErrorClass(self.id + ' ' + method + ' ' + url + ' ' + codeAsString + ' ' + reason + ' ' + body)
+ccxt.base.errors.ExchangeNotAvailable: binance GET https://testnet.binancefuture.com/exchangeInfo 404  {"timestamp":1756935385222,"status":404,"error":"Not Found","message":"No message available","path":"/exchangeInfo"}
+2025-09-03 21:36:25 [ERROR] src.exchange.binance_client: fetch_ohlcv error for BTC/USDT: binance GET https://testnet.binancefuture.com/exchangeInfo 404  {"timestamp":1756935385740,"status":404,"error":"Not Found","message":"No message available","path":"/exchangeInfo"}
+Traceback (most recent call last):
+  File "/home/ubuntu/crypto_bot/src/exchange/binance_client.py", line 54, in fetch_ohlcv
+    return await self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 4499, in fetch_ohlcv
+    await self.load_markets()
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 338, in load_markets
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 330, in load_markets
+    result = await self.markets_loading
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 297, in load_markets_helper
+    markets = await self.fetch_markets(params)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3061, in fetch_markets
+    results = await asyncio.gather(*promisesRaw)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11401, in request
+    response = await self.fetch2(path, api, method, params, headers, body, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 972, in fetch2
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 963, in fetch2
+    return await self.fetch(request['url'], request['method'], request['headers'], request['body'])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 264, in fetch
+    self.handle_http_status_code(http_status_code, http_status_text, url, method, http_response)
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 1736, in handle_http_status_code
+    raise ErrorClass(self.id + ' ' + method + ' ' + url + ' ' + codeAsString + ' ' + reason + ' ' + body)
+ccxt.base.errors.ExchangeNotAvailable: binance GET https://testnet.binancefuture.com/exchangeInfo 404  {"timestamp":1756935385740,"status":404,"error":"Not Found","message":"No message available","path":"/exchangeInfo"}
+2025-09-03 21:36:26 [ERROR] src.exchange.binance_client: fetch_ohlcv error for ETH/USDT: binance GET https://testnet.binancefuture.com/exchangeInfo 404  {"timestamp":1756935386470,"status":404,"error":"Not Found","message":"No message available","path":"/exchangeInfo"}
+Traceback (most recent call last):
+  File "/home/ubuntu/crypto_bot/src/exchange/binance_client.py", line 54, in fetch_ohlcv
+    return await self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 4499, in fetch_ohlcv
+    await self.load_markets()
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 338, in load_markets
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 330, in load_markets
+    result = await self.markets_loading
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 297, in load_markets_helper
+    markets = await self.fetch_markets(params)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3061, in fetch_markets
+    results = await asyncio.gather(*promisesRaw)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11401, in request
+    response = await self.fetch2(path, api, method, params, headers, body, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 972, in fetch2
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 963, in fetch2
+    return await self.fetch(request['url'], request['method'], request['headers'], request['body'])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 264, in fetch
+    self.handle_http_status_code(http_status_code, http_status_text, url, method, http_response)
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 1736, in handle_http_status_code
+    raise ErrorClass(self.id + ' ' + method + ' ' + url + ' ' + codeAsString + ' ' + reason + ' ' + body)
+ccxt.base.errors.ExchangeNotAvailable: binance GET https://testnet.binancefuture.com/exchangeInfo 404  {"timestamp":1756935386470,"status":404,"error":"Not Found","message":"No message available","path":"/exchangeInfo"}
+2025-09-03 21:40:06 [ERROR] src.exchange.binance_client: fetch_balance error: binance requires "apiKey" credential
+Traceback (most recent call last):
+  File "/home/ubuntu/crypto_bot/src/exchange/binance_client.py", line 121, in fetch_balance
+    return await self.exchange.fetch_balance(params={"type": "future"})
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3628, in fetch_balance
+    response = await self.fapiPrivateV3GetAccount(params)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11401, in request
+    response = await self.fetch2(path, api, method, params, headers, body, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 957, in fetch2
+    request = self.sign(path, api, method, params, headers, body)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11212, in sign
+    self.check_required_credentials()
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4777, in check_required_credentials
+    raise AuthenticationError(self.id + ' requires "' + key + '" credential')
+ccxt.base.errors.AuthenticationError: binance requires "apiKey" credential
+2025-09-03 21:54:38 [ERROR] src.exchange.binance_client: fetch_balance error: binance {"code":-2008,"msg":"Invalid Api-Key ID."}
+Traceback (most recent call last):
+  File "/home/ubuntu/crypto_bot/src/exchange/binance_client.py", line 121, in fetch_balance
+    return await self.exchange.fetch_balance(params={"type": "future"})
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3602, in fetch_balance
+    await self.load_markets()
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 338, in load_markets
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 330, in load_markets
+    result = await self.markets_loading
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 295, in load_markets_helper
+    currencies = await self.fetch_currencies()
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 2813, in fetch_currencies
+    results = await asyncio.gather(*promises)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11401, in request
+    response = await self.fetch2(path, api, method, params, headers, body, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 974, in fetch2
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 963, in fetch2
+    return await self.fetch(request['url'], request['method'], request['headers'], request['body'])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 263, in fetch
+    self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11368, in handle_errors
+    self.throw_exactly_matched_exception(self.get_exceptions_by_url(url, 'exact'), error, feedback)
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4963, in throw_exactly_matched_exception
+    raise exact[string](message)
+ccxt.base.errors.AuthenticationError: binance {"code":-2008,"msg":"Invalid Api-Key ID."}
+2025-09-03 21:54:38 [ERROR] src.exchange.binance_client: fetch_ohlcv error for BTC/USDT: binance {"code":-2008,"msg":"Invalid Api-Key ID."}
+Traceback (most recent call last):
+  File "/home/ubuntu/crypto_bot/src/exchange/binance_client.py", line 53, in fetch_ohlcv
+    return await self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 4499, in fetch_ohlcv
+    await self.load_markets()
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 338, in load_markets
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 330, in load_markets
+    result = await self.markets_loading
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 295, in load_markets_helper
+    currencies = await self.fetch_currencies()
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 2813, in fetch_currencies
+    results = await asyncio.gather(*promises)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11401, in request
+    response = await self.fetch2(path, api, method, params, headers, body, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 974, in fetch2
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 963, in fetch2
+    return await self.fetch(request['url'], request['method'], request['headers'], request['body'])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 263, in fetch
+    self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11368, in handle_errors
+    self.throw_exactly_matched_exception(self.get_exceptions_by_url(url, 'exact'), error, feedback)
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4963, in throw_exactly_matched_exception
+    raise exact[string](message)
+ccxt.base.errors.AuthenticationError: binance {"code":-2008,"msg":"Invalid Api-Key ID."}
+2025-09-03 21:54:38 [ERROR] src.exchange.binance_client: fetch_ohlcv error for ETH/USDT: binance {"code":-2008,"msg":"Invalid Api-Key ID."}
+Traceback (most recent call last):
+  File "/home/ubuntu/crypto_bot/src/exchange/binance_client.py", line 53, in fetch_ohlcv
+    return await self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 4499, in fetch_ohlcv
+    await self.load_markets()
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 338, in load_markets
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 330, in load_markets
+    result = await self.markets_loading
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 295, in load_markets_helper
+    currencies = await self.fetch_currencies()
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 2813, in fetch_currencies
+    results = await asyncio.gather(*promises)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11401, in request
+    response = await self.fetch2(path, api, method, params, headers, body, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 974, in fetch2
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 963, in fetch2
+    return await self.fetch(request['url'], request['method'], request['headers'], request['body'])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 263, in fetch
+    self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11368, in handle_errors
+    self.throw_exactly_matched_exception(self.get_exceptions_by_url(url, 'exact'), error, feedback)
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4963, in throw_exactly_matched_exception
+    raise exact[string](message)
+ccxt.base.errors.AuthenticationError: binance {"code":-2008,"msg":"Invalid Api-Key ID."}
+2025-09-03 22:22:39 [ERROR] src.exchange.binance_client: fetch_balance error: binance {"code":-2008,"msg":"Invalid Api-Key ID."}
+Traceback (most recent call last):
+  File "/home/ubuntu/crypto_bot/src/exchange/binance_client.py", line 121, in fetch_balance
+    return await self.exchange.fetch_balance(params={"type": "future"})
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 3602, in fetch_balance
+    await self.load_markets()
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 338, in load_markets
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 330, in load_markets
+    result = await self.markets_loading
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 295, in load_markets_helper
+    currencies = await self.fetch_currencies()
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 2813, in fetch_currencies
+    results = await asyncio.gather(*promises)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11401, in request
+    response = await self.fetch2(path, api, method, params, headers, body, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 974, in fetch2
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 963, in fetch2
+    return await self.fetch(request['url'], request['method'], request['headers'], request['body'])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 263, in fetch
+    self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11368, in handle_errors
+    self.throw_exactly_matched_exception(self.get_exceptions_by_url(url, 'exact'), error, feedback)
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4963, in throw_exactly_matched_exception
+    raise exact[string](message)
+ccxt.base.errors.AuthenticationError: binance {"code":-2008,"msg":"Invalid Api-Key ID."}
+2025-09-03 22:22:40 [ERROR] src.exchange.binance_client: fetch_ohlcv error for BTC/USDT: binance {"code":-2008,"msg":"Invalid Api-Key ID."}
+Traceback (most recent call last):
+  File "/home/ubuntu/crypto_bot/src/exchange/binance_client.py", line 53, in fetch_ohlcv
+    return await self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 4499, in fetch_ohlcv
+    await self.load_markets()
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 338, in load_markets
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 330, in load_markets
+    result = await self.markets_loading
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 295, in load_markets_helper
+    currencies = await self.fetch_currencies()
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 2813, in fetch_currencies
+    results = await asyncio.gather(*promises)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11401, in request
+    response = await self.fetch2(path, api, method, params, headers, body, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 974, in fetch2
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 963, in fetch2
+    return await self.fetch(request['url'], request['method'], request['headers'], request['body'])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 263, in fetch
+    self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11368, in handle_errors
+    self.throw_exactly_matched_exception(self.get_exceptions_by_url(url, 'exact'), error, feedback)
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4963, in throw_exactly_matched_exception
+    raise exact[string](message)
+ccxt.base.errors.AuthenticationError: binance {"code":-2008,"msg":"Invalid Api-Key ID."}
+2025-09-03 22:22:40 [ERROR] src.exchange.binance_client: fetch_ohlcv error for ETH/USDT: binance {"code":-2008,"msg":"Invalid Api-Key ID."}
+Traceback (most recent call last):
+  File "/home/ubuntu/crypto_bot/src/exchange/binance_client.py", line 53, in fetch_ohlcv
+    return await self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 4499, in fetch_ohlcv
+    await self.load_markets()
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 338, in load_markets
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 330, in load_markets
+    result = await self.markets_loading
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 295, in load_markets_helper
+    currencies = await self.fetch_currencies()
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 2813, in fetch_currencies
+    results = await asyncio.gather(*promises)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11401, in request
+    response = await self.fetch2(path, api, method, params, headers, body, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 974, in fetch2
+    raise e
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 963, in fetch2
+    return await self.fetch(request['url'], request['method'], request['headers'], request['body'])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/base/exchange.py", line 263, in fetch
+    self.handle_errors(http_status_code, http_status_text, url, method, headers, http_response, json_response, request_headers, request_body)
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/async_support/binance.py", line 11368, in handle_errors
+    self.throw_exactly_matched_exception(self.get_exceptions_by_url(url, 'exact'), error, feedback)
+  File "/home/ubuntu/crypto_bot/.venv/lib/python3.12/site-packages/ccxt/base/exchange.py", line 4963, in throw_exactly_matched_exception
+    raise exact[string](message)
+ccxt.base.errors.AuthenticationError: binance {"code":-2008,"msg":"Invalid Api-Key ID."}
+2025-09-04 02:05:09 [ERROR] core.bot: Unhandled exception in trading loop
+Traceback (most recent call last):
+  File "/home/ubuntu/crypto_bot/core/bot.py", line 86, in run_trading_loop
+    top_candidates = self.pair_selector.select_top_symbols(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: PairSelector.select_top_symbols() got an unexpected keyword argument 'max_active_symbols'

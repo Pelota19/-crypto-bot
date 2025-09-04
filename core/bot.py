@@ -1,89 +1,85 @@
-# Implementación del bot principal, orquestador simple con balance cap y alertas Telegram.
+"""
+Bot principal unificado para Crypto Scalping
+Testnet real con Binance Futures (USDT-M)
+"""
+
 import asyncio
 import logging
-import signal
-from typing import Optional
-from utils.logger import setup_logging, get_logger
-from config.settings import TRADING_PAIRS, DRY_RUN, USE_TESTNET, MAX_OPEN_TRADES, DAILY_PROFIT_TARGET, CAPITAL_MAX_USDT
+from src.config import API_KEY, API_SECRET, USE_TESTNET, POSITION_SIZE_PERCENT, MAX_OPEN_TRADES
+from src.config import DAILY_PROFIT_TARGET, CAPITAL_MAX_USDT, TRADING_PAIRS
 from src.exchange.binance_client import BinanceClient
 from src.executor import Executor
-from src.risk.manager import RiskManager, cap_equity
 from src.strategy.strategy import build_features
 from src.state import bot_state
-from src.notifications.telegram import send_telegram_message
+from src.risk.manager import RiskManager, cap_equity
+from src.pair_selector import PairSelector
+from src.persistence.sqlite_store import save_balance
+from src.telegram.console import TelegramConsole
 
-logger = get_logger(__name__)
-
-try:
-    from src.ai.scorer import scorer as ai_scorer
-except Exception:
-    ai_scorer = None
+logger = logging.getLogger(__name__)
 
 class CryptoBot:
     def __init__(self):
-        setup_logging()
-        self.logger = get_logger(__name__)
-        self.client = BinanceClient(dry_run=DRY_RUN, use_testnet=USE_TESTNET)
+        logging.basicConfig(level=logging.INFO)
+        self.logger = logger
+
+        # Inicializar cliente Binance y habilitar Testnet
+        self.exchange = BinanceClient(API_KEY, API_SECRET)
+        if hasattr(self.exchange, "use_testnet"):
+            self.exchange.use_testnet(USE_TESTNET)
+        elif hasattr(self.exchange, "sandbox"):
+            self.exchange.sandbox = USE_TESTNET
+
         self.risk_manager = RiskManager()
-        self.executor = Executor(self.client, self.risk_manager, dry_run=DRY_RUN)
+        self.executor = Executor(self.exchange, self.risk_manager, dry_run=False)  # real trades on Testnet
         self._stop_event = asyncio.Event()
-        # allow string config like "BTC/USDT,ETH/USDT"
-        self.pairs = TRADING_PAIRS if isinstance(TRADING_PAIRS, (list, tuple)) else [p.strip() for p in TRADING_PAIRS.split(",") if p.strip()]
+        self.pair_selector = PairSelector(self.exchange, POSITION_SIZE_PERCENT)
+        self.telegram = TelegramConsole(order_manager=None)  # placeholder
+        self.pairs = TRADING_PAIRS
 
     async def start(self):
         self.logger.info("Starting CryptoBot")
         await self.executor.start()
-        await send_telegram_message("🚀 CryptoBot started (Test/DRY_RUN mode)" if DRY_RUN else "🚀 CryptoBot started (LIVE/Testnet)")
+        await self.telegram.send_message("🚀 CryptoBot started on TESTNET")
 
     async def stop(self):
         self.logger.info("Stopping CryptoBot")
         await self.executor.stop()
-        await self.client.close()
+        await self.exchange.close()
         self._stop_event.set()
-        await send_telegram_message("⛔ CryptoBot stopped")
+        await self.telegram.send_message("⛔ CryptoBot stopped")
 
     async def _get_usable_equity(self) -> float:
-        """Get usable equity (cap to CAPITAL_MAX_USDT)."""
+        """Get usable equity (capped by CAPITAL_MAX_USDT)"""
         try:
-            bal = await self.client.fetch_balance()
-            # Try multiple balance shapes
-            usdt = 0.0
-            if isinstance(bal, dict):
-                # ccxt futures: bal['USDT']['free'] or bal['total']
-                if 'USDT' in bal and isinstance(bal['USDT'], dict):
-                    usdt = float(bal['USDT'].get('free') or bal['USDT'].get('total') or 0.0)
-                elif 'total' in bal:
-                    # some payloads have nested data; fallback
-                    usdt = float(bal.get('total', {}).get('USDT', 0.0) or 0.0)
-            usable = cap_equity(usdt)
-            # Ensure we never use more than CAPITAL_MAX_USDT
-            return min(usable, float(CAPITAL_MAX_USDT))
+            bal = await self.exchange.get_balance_usdt()
+            usable = cap_equity(bal)
+            return min(usable, CAPITAL_MAX_USDT)
         except Exception:
-            logger.exception("Error fetching balance, defaulting usable equity to CAPITAL_MAX_USDT")
-            return float(CAPITAL_MAX_USDT)
+            self.logger.exception("Error fetching balance, defaulting to CAPITAL_MAX_USDT")
+            return CAPITAL_MAX_USDT
 
     async def run_trading_loop(self):
-        self.logger.info("Entering trading loop")
+        self.logger.info("Entering trading loop on TESTNET")
         try:
             while not self._stop_event.is_set():
                 if bot_state.is_paused:
-                    self.logger.info("Bot is paused (daily target or manual). Sleeping...")
+                    self.logger.info("Bot paused, sleeping 60s")
                     await asyncio.sleep(60)
                     continue
 
-                # Fetch usable equity once per loop
                 equity = await self._get_usable_equity()
 
-                for sym in self.pairs:
-                    if bot_state.is_paused:
-                        break
+                # Selección top symbols
+                top_candidates = self.pair_selector.select_top_symbols(self.pairs, POSITION_SIZE_PERCENT)
+
+                for candidate in top_candidates:
+                    sym = candidate.symbol
                     if len(bot_state.open_positions) >= MAX_OPEN_TRADES:
-                        self.logger.debug("Reached MAX_OPEN_TRADES, skipping new openings")
                         break
 
-                    raw = await self.client.fetch_ohlcv(sym, timeframe="1m", limit=200)
+                    raw = await self.exchange.fetch_ohlcv(sym, timeframe="1m", limit=200)
                     if not raw:
-                        await asyncio.sleep(0.2)
                         continue
 
                     import pandas as pd
@@ -93,33 +89,20 @@ class CryptoBot:
                     try:
                         features = build_features(df)
                     except Exception:
-                        logger.exception("Failed to build features for %s", sym)
+                        self.logger.exception("Failed to build features for %s", sym)
                         continue
 
-                    score = None
-                    if ai_scorer:
-                        try:
-                            score = ai_scorer.score(features)
-                        except Exception:
-                            logger.exception("AI scorer failed, falling back to heuristic")
-                            score = None
+                    # Simple scoring
+                    mom = features.get("mom", 0)
+                    rsi_centered = features.get("rsi_centered", 0)
+                    score = 1.0 if (mom > 0 and rsi_centered > 0) else 0.0
 
-                    # fallback simple heuristic
-                    if score is None:
-                        mom = features.get("mom", 0.0)
-                        rsi_centered = features.get("rsi_centered", 0.0)
-                        score = 1.0 if (mom > 0 and rsi_centered > 0) else 0.0
-
-                    # Threshold to open trade (simple)
-                    if score and score >= 1.0:
-                        side = "buy" if features.get("mom", 0) > 0 else "sell"
-                        # size based on configured MAX_RISK_PER_TRADE applied to capped equity
-                        from config.settings import MAX_RISK_PER_TRADE, MAX_INVESTMENT
-                        # Use the lesser of actual equity and MAX_INVESTMENT (but both are capped by CAPITAL_MAX_USDT)
-                        effective_equity = min(equity, float(MAX_INVESTMENT))
-                        size_usd = effective_equity * (float(MAX_RISK_PER_TRADE) / 100.0)
+                    if score >= 1.0:
+                        side = "buy" if mom > 0 else "sell"
+                        size_usd = equity * POSITION_SIZE_PERCENT
                         current_price = float(df["close"].iloc[-1])
                         await self.executor.open_position(sym, side, size_usd, current_price)
+                        await self.telegram.send_message(f"{sym} {side.upper()} opened @ {current_price:.2f}")
 
                     await asyncio.sleep(0.5)
 
