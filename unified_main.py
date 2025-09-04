@@ -1,16 +1,15 @@
 """
 Unified CryptoBot - Binance Futures (USDT-M)
-Ejecución real o sandbox según configuración.
-Scalping EMA/RSI con gestión de riesgo estricta y Bracket orders (entrada LIMIT post-only, SL + TP).
+Scalping EMA/RSI con gestión de riesgo estricta y Bracket orders.
+Aplica apalancamiento según config.LEVERAGE.
 """
 import asyncio
 import logging
 import pandas as pd
-from datetime import datetime, timedelta
 
 from config import (
     API_KEY, API_SECRET, USE_TESTNET, POSITION_SIZE_PERCENT, MAX_OPEN_TRADES, DAILY_PROFIT_TARGET,
-    TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, MAX_ACTIVE_SYMBOLS, MIN_NOTIONAL_USD
+    TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, MAX_ACTIVE_SYMBOLS, MIN_NOTIONAL_USD, LEVERAGE
 )
 
 from src.exchange.binance_client import BinanceClient
@@ -33,9 +32,8 @@ TIMEFRAME_SIGNAL = '1m'
 TIMEFRAME_TENDENCIA = '15m'
 WATCHLIST_DINAMICA = []
 
-# ---- FILTROS DE ESTRATEGIA ----
-MAX_PRICE_PER_UNIT = 1000   # precio máximo por unidad
-MAX_TRADE_USDT = 50         # máximo USDT por operación
+MAX_PRICE_PER_UNIT = 1000
+MAX_TRADE_USDT = 50
 
 class CryptoBot:
     def __init__(self):
@@ -48,7 +46,6 @@ class CryptoBot:
         self._stop_event = asyncio.Event()
 
     async def actualizar_watchlist(self):
-        logger.info("Iniciando scan de mercado para actualizar watchlist...")
         all_symbols = await self.exchange.fetch_all_symbols()
         filtered = []
         for sym in all_symbols:
@@ -62,25 +59,18 @@ class CryptoBot:
                     continue
                 df = pd.DataFrame(ohlcv, columns=["timestamp","open","high","low","close","volume"])
                 price = float(df["close"].iloc[-1])
-
-                # FILTRO ESTRATEGIA: precio máximo
                 if price > MAX_PRICE_PER_UNIT:
                     continue
-
                 atr = AverageTrueRange(df['high'], df['low'], df['close'], window=14).average_true_range().iloc[-1]
                 atr_rel = atr / price
                 if vol < 50_000_000 or price <= 0 or atr_rel < 0.005:
                     continue
-
                 filtered.append((sym, vol))
-            except Exception as e:
-                logger.debug("Skip symbol %s due to error: %s", sym, e)
+            except Exception:
                 continue
-
         filtered.sort(key=lambda x: x[1], reverse=True)
         global WATCHLIST_DINAMICA
         WATCHLIST_DINAMICA = [x[0] for x in filtered[:MAX_ACTIVE_SYMBOLS]]
-        logger.info("Watchlist actualizada (%d): %s", len(WATCHLIST_DINAMICA), WATCHLIST_DINAMICA)
         await self.telegram.send_message(f"📊 Watchlist actualizada: {WATCHLIST_DINAMICA}")
 
     async def analizar_signal(self, sym: str):
@@ -91,49 +81,34 @@ class CryptoBot:
                 return None
             df_1m = pd.DataFrame(ohlcv_1m, columns=["timestamp","open","high","low","close","volume"])
             df_15m = pd.DataFrame(ohlcv_15m, columns=["timestamp","open","high","low","close","volume"])
-
             ema9 = EMAIndicator(df_1m["close"], window=9).ema_indicator().iloc[-1]
             ema21 = EMAIndicator(df_1m["close"], window=21).ema_indicator().iloc[-1]
             rsi14 = RSIIndicator(df_1m["close"], window=14).rsi().iloc[-1]
             ema50_15m = EMAIndicator(df_15m["close"], window=50).ema_indicator().iloc[-1]
             price = float(df_1m["close"].iloc[-1])
-
-            # LONG
             if price > ema50_15m and ema9 > ema21 and rsi14 < 65:
                 return "long"
-            # SHORT
             if price < ema50_15m and ema9 < ema21 and rsi14 > 35:
                 return "short"
-        except Exception as e:
-            logger.debug("analizar_signal error for %s: %s", sym, e)
+        except Exception:
             return None
         return None
 
     async def ejecutar_trade(self, sym: str, signal: str):
         if sym in self.state.open_positions:
             return
-
         size_usdt = CAPITAL_TOTAL * POSITION_SIZE_PERCENT
         try:
             ohlcv = await self.exchange.fetch_ohlcv(sym, timeframe=TIMEFRAME_SIGNAL, limit=1)
             if not ohlcv:
                 return
             price = float(ohlcv[-1][4])
-        except Exception as e:
-            logger.debug("No se pudo obtener precio para %s: %s", sym, e)
+        except Exception:
             return
-
-        quantity = size_usdt / price
+        quantity = (size_usdt / price) * LEVERAGE
         notional = price * quantity
-
-        # FILTRO ESTRATEGIA: ignorar trade si excede tamaño máximo
-        if notional > MAX_TRADE_USDT:
-            logger.info("%s: notional %f USDT excede límite de estrategia (%f), ignorando", sym, notional, MAX_TRADE_USDT)
+        if notional > MAX_TRADE_USDT or notional < MIN_NOTIONAL_USD:
             return
-        if notional < MIN_NOTIONAL_USD:
-            logger.info("%s: notional demasiado pequeño: %f USDT (min %f)", sym, notional, MIN_NOTIONAL_USD)
-            return
-
         if signal == "long":
             entry = price
             sl = entry * (1 - STOP_LOSS_PORCENTAJE)
@@ -146,7 +121,6 @@ class CryptoBot:
             side = "SELL"
         else:
             return
-
         try:
             entry_order, stop_order, tp_order = await self.exchange.create_bracket_order(
                 symbol=sym,
@@ -160,7 +134,6 @@ class CryptoBot:
             self.state.register_open_position(sym, signal, entry, size_usdt, sl, tp)
             await self.telegram.send_message(f"{sym} {signal.upper()} abierto @ {entry:.2f} USDT, SL {sl:.2f}, TP {tp:.2f}")
         except Exception as e:
-            logger.exception("Failed to place bracket for %s: %s", sym, e)
             await self.telegram.send_message(f"❌ Error al abrir {sym}: {e}")
 
     async def run_trading_loop(self):
