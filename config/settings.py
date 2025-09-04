@@ -36,10 +36,10 @@ def _list_str(v: str) -> List[str]:
 EXCHANGE = _get_env("EXCHANGE", "binance")
 API_KEY = _get_env("BINANCE_API_KEY", "")
 API_SECRET = _get_env("BINANCE_API_SECRET", "")
-USE_TESTNET = _get_env("USE_TESTNET", True, _bool)
+USE_TESTNET = _get_env("USE_TESTNET", True, _bool)  # True = testnet real
 
 # Safety / execution
-DRY_RUN = _get_env("DRY_RUN", True, _bool)  # True = no real orders (recommended to test)
+DRY_RUN = _get_env("DRY_RUN", False, _bool)  # False = abrir trades reales en testnet
 ORDER_TIMEOUT = _get_env("ORDER_TIMEOUT", 30, _int)  # seconds to wait for fills
 
 # Trading settings
@@ -54,8 +54,16 @@ MAX_OPEN_TRADES = _get_env("MAX_OPEN_TRADES", 5, _int)
 MAX_DAILY_DRAWDOWN = _get_env("MAX_DAILY_DRAWDOWN", 5.0, _float)  # percentage
 RISK_REWARD_RATIO = _get_env("RISK_REWARD_RATIO", 2.0, _float)
 
-# Hard cap on capital to use (your requirement)
+# Hard cap on capital to use
 CAPITAL_MAX_USDT = _get_env("CAPITAL_MAX_USDT", 2000.0, _float)
+
+# Risk / sizing adicional
+POSITION_SIZE_PERCENT = 0.02  # 2% del capital por trade, ajustable
+
+# Trading / selection
+TIMEFRAME = _get_env("TIMEFRAME", "1m")  # timeframe usado por el bot, p.ej. "1m", "5m"
+MIN_NOTIONAL_USD = _get_env("MIN_NOTIONAL_USD", 10.0)  # mínimo tamaño por trade
+MAX_ACTIVE_SYMBOLS = _get_env("MAX_ACTIVE_SYMBOLS", 5)  # máximo de trades activos simultáneamente
 
 # Telegram
 TELEGRAM_BOT_TOKEN = _get_env("TELEGRAM_BOT_TOKEN", "")
