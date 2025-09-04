@@ -4,8 +4,8 @@ import datetime
 
 logger = logging.getLogger(__name__)
 
-class Notifier:
-    def __init__(self, telegram_token, chat_id):
+class TelegramNotifier:
+    def __init__(self, telegram_token: str, chat_id: str):
         self.telegram_token = telegram_token
         self.chat_id = chat_id
 
