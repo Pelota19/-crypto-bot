@@ -1,10 +1,13 @@
 """
+src/exchange/binance_client.py
+
 Async wrapper for Binance Futures via ccxt.async_support.
-Supports sandbox/testnet mode (when supported by ccxt) and DRY_RUN simulation.
+Soporta sandbox/testnet y modo DRY_RUN.
+Mejor manejo de símbolos y errores para evitar que un símbolo inválido rompa el scanner.
 """
 import time
 import logging
-from typing import Optional, List
+from typing import Optional, List, Dict
 import ccxt.async_support as ccxt
 
 from config.settings import API_KEY, API_SECRET, USE_TESTNET, DRY_RUN
@@ -21,6 +24,7 @@ class BinanceClient:
     ):
         self.dry_run = dry_run
         opts = {"defaultType": "future"}
+        # create exchange instance
         self.exchange = ccxt.binance({
             "apiKey": api_key,
             "secret": api_secret,
@@ -29,6 +33,7 @@ class BinanceClient:
         })
         if use_testnet:
             try:
+                # intenta activar sandbox/testnet (puede no estar disponible en algunas builds)
                 self.exchange.set_sandbox_mode(True)
                 logger.info("Binance sandbox mode enabled")
             except Exception:
@@ -46,14 +51,22 @@ class BinanceClient:
         try:
             return await self.exchange.fetch_ticker(symbol)
         except Exception as e:
-            logger.exception("fetch_ticker error for %s: %s", symbol, e)
+            # no romper todo si un símbolo no existe o hay error puntual
+            logger.debug("fetch_ticker error for %s: %s", symbol, e)
             return None
 
     async def fetch_all_symbols(self) -> List[str]:
-        """Retorna todos los pares USDT-M futures disponibles."""
+        """
+        Retorna una lista de símbolos candidatos.
+        Filtra por '/USDT' para concentrarnos en pares cotizados en USDT.
+        No asume que todos esos símbolos estén disponibles en Futuros — la verificación
+        final se hace con fetch_ticker/ohlcv (con manejo de errores).
+        """
         try:
-            markets = await self.exchange.load_markets()
-            return [m for m in markets if "USDT" in m]
+            markets: Dict[str, dict] = await self.exchange.load_markets()
+            # markets keys son símbolos como "BTC/USDT", "TUSD/USDT", etc.
+            candidates = [sym for sym in markets.keys() if sym.endswith("/USDT")]
+            return candidates
         except Exception as e:
             logger.exception("fetch_all_symbols failed: %s", e)
             return []
@@ -85,7 +98,8 @@ class BinanceClient:
     async def create_oco_order(self, symbol: str, side: str, quantity: float, stop_price: float, take_profit_price: float):
         """
         Crea OCO en Binance Futures usando STOP_MARKET + TAKE_PROFIT_LIMIT.
-        side: 'BUY' o 'SELL' (inverso al abrir short/long)
+        Nota: Binance Futures no implementa OCO nativo vía API, por eso se crean 2 órdenes.
+        La implementación es simple: crear TP (limit) y luego StopMarket.
         """
         if self.dry_run:
             oid = f"sim-oco-{int(time.time()*1000)}"
@@ -93,22 +107,42 @@ class BinanceClient:
                         symbol, side, quantity, stop_price, take_profit_price, oid)
             return {"id": oid, "status": "open"}
         try:
-            # Binance Futures no tiene OCO nativo, simulamos con dos órdenes
-            side_opposite = "SELL" if side=="BUY" else "BUY"
-            # Take profit limit
+            # Take profit limit (side = same as open side)
             await self.exchange.create_order(symbol, "LIMIT", side, quantity, take_profit_price)
-            # Stop market
-            await self.exchange.create_order(symbol, "STOP_MARKET", side_opposite, quantity, None, {"stopPrice": stop_price})
+            # Stop market (side opposite for triggering on adverse movement)
+            stop_side = "SELL" if side == "BUY" else "BUY"
+            await self.exchange.create_order(symbol, "STOP_MARKET", stop_side, quantity, None, {"stopPrice": stop_price})
             return {"status": "open"}
         except Exception as e:
             logger.exception("create_oco_order failed: %s", e)
+            raise
+
+    async def fetch_order(self, order_id: str, symbol: str = None) -> Optional[dict]:
+        if self.dry_run and order_id.startswith("sim"):
+            if order_id.startswith("sim-market"):
+                return {"id": order_id, "status": "closed", "filled": None}
+            return {"id": order_id, "status": "open"}
+        try:
+            return await self.exchange.fetch_order(order_id, symbol)
+        except Exception as e:
+            logger.exception("fetch_order error: %s", e)
+            return None
+
+    async def cancel_order(self, order_id: str, symbol: str):
+        if self.dry_run:
+            logger.info("DRY_RUN cancel order %s %s", order_id, symbol)
+            return {"id": order_id, "status": "canceled"}
+        try:
+            return await self.exchange.cancel_order(order_id, symbol)
+        except Exception as e:
+            logger.exception("cancel_order error: %s", e)
             raise
 
     async def fetch_balance(self) -> dict:
         if self.dry_run:
             return {"USDT": {"free": 10000.0, "used": 0.0, "total": 10000.0}}
         try:
-            return await self.exchange.fetch_balance(params={"type":"future"})
+            return await self.exchange.fetch_balance(params={"type": "future"})
         except Exception as e:
             logger.exception("fetch_balance error: %s", e)
             return {}
@@ -116,7 +150,8 @@ class BinanceClient:
     async def get_balance_usdt(self) -> float:
         bal = await self.fetch_balance()
         try:
-            return bal["USDT"]["free"]
+            # ccxt futures balance shape suele tener 'USDT' key
+            return float(bal.get("USDT", {}).get("free", 0.0) if isinstance(bal, dict) else 0.0)
         except Exception:
             return 0.0
 
