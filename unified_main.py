@@ -1,126 +1,74 @@
+"""
+Unified CryptoBot para Binance Futures (USDT-M)
+Trading en Testnet o Real según configuración
+"""
 import asyncio
 import logging
-import datetime
+import pandas as pd
+from datetime import datetime, timedelta
 
-from src.exchange.binance_client import BinanceFuturesClient
-from src.executor import Executor
-from src.state import StateManager
-from src.notifier.telegram_notifier import TelegramNotifier
-from src.pair_selector import PairSelector
-from src.signal_generator import SignalGenerator
-
-# ========================
-# Configuración General
-# ========================
-CAPITAL_TOTAL = 2000
-RIESGO_POR_OPERACION_PORCENTAJE = 1.0
-OBJETIVO_PROFIT_DIARIO = 50
-MAX_OPERACIONES_SIMULTANEAS = 5
-
-TELEGRAM_TOKEN = "TU_TOKEN"
-TELEGRAM_CHAT_ID = "TU_CHAT_ID"
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.FileHandler("logs/crypto_bot.log"),
-        logging.StreamHandler()
-    ]
+from src.config import (
+    API_KEY,
+    API_SECRET,
+    USE_TESTNET,
+    CAPITAL_MAX_USDT,
+    POSITION_SIZE_PERCENT,
+    MAX_OPEN_TRADES,
+    DAILY_PROFIT_TARGET,
+    TRADING_PAIRS,
 )
+from src.exchange.binance_client import BinanceClient
+from src.executor import Executor
+from src.strategy.strategy import build_features
+from src.state import bot_state
+from src.risk.manager import RiskManager, cap_equity
+from src.pair_selector import PairSelector
+from src.notifier.telegram_notifier import TelegramNotifier
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 class CryptoBot:
     def __init__(self):
-        # Exchange
-        self.exchange = BinanceFuturesClient()
+        self.exchange = BinanceClient(api_key=API_KEY, api_secret=API_SECRET, use_testnet=USE_TESTNET)
+        self.executor = Executor(self.exchange)
+        self.risk_manager = RiskManager()
+        self.pair_selector = PairSelector()
+        self.telegram = TelegramNotifier()
+        self._stop_event = asyncio.Event()
+        self.pairs = TRADING_PAIRS
+        self.watchlist_dinamica = []
 
-        # Componentes principales
-        self.executor = Executor(self.exchange, dry_run=False)
-        self.state_manager = StateManager(daily_profit_target=OBJETIVO_PROFIT_DIARIO)
-        self.notifier = TelegramNotifier(TELEGRAM_TOKEN, TELEGRAM_CHAT_ID)
-        self.pair_selector = PairSelector(self.exchange)
-        self.signal_generator = SignalGenerator(self.exchange)
-
-        # Variables internas
-        self.watchlist = []
+        # Estado de PnL diario
+        self.pnl_diario = 0.0
+        self.last_watchlist_update = datetime.utcnow() - timedelta(hours=1)
 
     async def actualizar_watchlist(self):
-        """ Actualizar dinámicamente la watchlist cada hora """
-        self.watchlist = await self.pair_selector.select_top_symbols_async(
-            position_size_percent=RIESGO_POR_OPERACION_PORCENTAJE
-        )
-        self.notifier.send(f"🔄 Watchlist actualizada: {', '.join(self.watchlist)}")
+        """Actualizar watchlist dinámica cada hora."""
+        logger.info("Actualizando watchlist dinámica...")
+        all_symbols = await self.exchange.get_all_symbols()
+        candidates = []
 
-    async def hourly_summary(self):
-        """ Enviar resumen cada hora a Telegram """
-        while True:
-            now = datetime.datetime.utcnow()
-            summary = (
-                f"📊 RESUMEN {now.strftime('%Y-%m-%d %H:%M')}\n"
-                f"PnL Realizado Hoy: {self.state_manager.realized_pnl_today:.2f} USDT\n"
-                f"Operaciones Abiertas: {len(self.state_manager.open_positions)}\n"
-                f"Watchlist Dinámica: {', '.join(self.watchlist)}"
-            )
-            self.notifier.send(summary)
-            await asyncio.sleep(3600)
+        for sym in all_symbols:
+            ticker = await self.exchange.fetch_ticker(sym)
+            if ticker is None:
+                continue
+            vol24h = float(ticker.get("quoteVolume", 0))
+            if vol24h < 50_000_000:  # filtro volumen
+                continue
 
-    async def run_trading_loop(self):
-        """ Bucle principal del bot """
-        while True:
-            try:
-                # Verificar si puede abrir nuevas operaciones
-                if not self.state_manager.can_open_new_trade():
-                    await asyncio.sleep(60)
-                    continue
+            # Obtener OHLCV 15m para ATR
+            ohlcv = await self.exchange.fetch_ohlcv(sym, timeframe="15m", limit=15)
+            if not ohlcv:
+                continue
+            df = pd.DataFrame(ohlcv, columns=["ts", "open", "high", "low", "close", "vol"])
+            df["atr"] = df["high"] - df["low"]
+            atr = df["atr"].mean()
+            price_close = df["close"].iloc[-1]
+            if (atr / price_close) < 0.005:  # filtro volatilidad
+                continue
+            candidates.append((sym, vol24h))
 
-                # Control de concurrencia
-                if len(self.state_manager.open_positions) >= MAX_OPERACIONES_SIMULTANEAS:
-                    await asyncio.sleep(60)
-                    continue
-
-                # Escaneo de señales en la watchlist
-                for symbol in self.watchlist:
-                    if symbol in self.state_manager.open_positions:
-                        continue  # ya hay posición abierta en este par
-
-                    signal = await self.signal_generator.check_signal(symbol)
-                    if signal:
-                        side, entry, sl, tp, size = signal
-
-                        # Ejecutar trade
-                        order = await self.executor.open_position(symbol, side, size, entry)
-                        if order:
-                            self.state_manager.register_open_position(symbol, side, entry, size, sl, tp)
-                            self.notifier.send(
-                                f"🚀 Trade abierto: {symbol} {side}\nEntry: {entry}\nSL: {sl}\nTP: {tp}\nSize: {size}"
-                            )
-
-                await asyncio.sleep(10)
-
-            except Exception as e:
-                logger.error(f"Unhandled exception in trading loop: {e}")
-                self.notifier.send(f"⚠️ Error en loop: {e}")
-                await asyncio.sleep(30)
-
-    async def main(self):
-        logger.info("Starting CryptoBot")
-        self.notifier.send("🚀 CryptoBot started on TESTNET")
-
-        # Primera actualización de watchlist
-        await self.actualizar_watchlist()
-
-        # Resumen cada hora
-        asyncio.create_task(self.hourly_summary())
-
-        # Trading loop
-        await self.run_trading_loop()
-
-if __name__ == "__main__":
-    bot = CryptoBot()
-    try:
-        asyncio.run(bot.main())
-    except KeyboardInterrupt:
-        logger.info("Stopping CryptoBot")
-        bot.notifier.send("⛔ CryptoBot stopped")
+        # Ordenar por volumen y tomar top 15
+        candidates.sort(key=lambda x: x[1], reverse=True)
+        self.watchlist_dinamica
