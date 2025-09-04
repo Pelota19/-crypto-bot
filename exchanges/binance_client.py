@@ -3,8 +3,8 @@ src/exchange/binance_client.py
 
 Async wrapper for Binance Futures via ccxt.async_support.
 Soporta sandbox/testnet y DRY_RUN.
-Provee create_bracket_order para emular OCO en Futures (entrada LIMIT post-only,
-espera fill, luego STOP_MARKET + TAKE_PROFIT_MARKET).
+Provee create_bracket_order para emular OCO en Futures:
+entrada LIMIT post-only, espera fill, luego STOP_MARKET + TAKE_PROFIT_LIMIT.
 """
 import time
 import logging
@@ -35,7 +35,6 @@ class BinanceClient:
         })
         if use_testnet:
             try:
-                # intenta activar sandbox/testnet (puede no estar disponible en algunas builds)
                 self.exchange.set_sandbox_mode(True)
                 logger.info("Binance sandbox mode enabled")
             except Exception:
@@ -53,19 +52,13 @@ class BinanceClient:
         try:
             return await self.exchange.fetch_ticker(symbol)
         except Exception as e:
-            # no romper todo si un símbolo no existe o hay error puntual
             logger.debug("fetch_ticker error for %s: %s", symbol, e)
             return None
 
     async def fetch_all_symbols(self) -> List[str]:
-        """
-        Retorna una lista de símbolos candidatos.
-        Filtra por '/USDT' para concentrarnos en pares cotizados en USDT.
-        """
         try:
             markets: Dict[str, dict] = await self.exchange.load_markets()
-            candidates = [sym for sym in markets.keys() if sym.endswith("/USDT")]
-            return candidates
+            return [sym for sym in markets.keys() if sym.endswith("/USDT")]
         except Exception as e:
             logger.exception("fetch_all_symbols failed: %s", e)
             return []
@@ -126,17 +119,9 @@ class BinanceClient:
         wait_timeout: int = 30
     ) -> Tuple[Optional[dict], Optional[dict], Optional[dict]]:
         """
-        Emula un bracket (entrada LIMIT post-only -> espera fill -> STOP_MARKET + TAKE_PROFIT_MARKET).
-        - symbol: "BTC/USDT"
-        - side: "BUY" o "SELL" (para abrir la posición)
-        - quantity: cantidad en unidades del activo (base asset)
-        - entry_price: precio LIMIT para la entrada
-        - stop_price: precio para stop market
-        - take_profit_price: precio para take profit trigger
-        - wait_timeout: segundos máximo a esperar por el fill de la entrada
-        Retorna (entry_order, stop_order, tp_order) (pueden ser dicts o None en DRY_RUN).
+        Entrada LIMIT post-only, espera fill, luego SL + TP.
+        TP siempre como LIMIT para comisiones de Maker.
         """
-        # DRY_RUN: simula
         if self.dry_run:
             oid = f"sim-bracket-{int(time.time()*1000)}"
             logger.info("DRY_RUN bracket simulated: %s %s %f entry=%f stop=%f tp=%f (%s)",
@@ -145,81 +130,43 @@ class BinanceClient:
                     {"id": f"{oid}-stop", "status": "open"},
                     {"id": f"{oid}-tp", "status": "open"})
 
-        # 1) Colocar orden de entrada LIMIT como post-only (timeInForce GTX / POST_ONLY)
-        try:
-            params_entry = {"timeInForce": "GTX"}  # GTX es post-only compatible en ccxt/binance
-            logger.info("Placing LIMIT post-only entry %s %s qty=%s price=%s", symbol, side, quantity, entry_price)
-            entry_order = await self.exchange.create_order(symbol, "LIMIT", side, quantity, entry_price, params_entry)
-        except Exception as e:
-            logger.exception("create_bracket_entry failed: %s", e)
-            raise
+        # Entrada LIMIT post-only
+        params_entry = {"timeInForce": "GTX"}
+        logger.info("Placing LIMIT post-only entry %s %s qty=%s price=%s", symbol, side, quantity, entry_price)
+        entry_order = await self.exchange.create_order(symbol, "LIMIT", side, quantity, entry_price, params_entry)
 
-        # 2) Esperar a que la orden de entrada se ejecute (polling)
+        # Esperar fill
         entry_filled = False
-        entry_fetch_id = entry_order.get("id") if isinstance(entry_order, dict) else None
         start = time.time()
-        try:
-            while time.time() - start < wait_timeout:
-                if not entry_fetch_id:
-                    break
-                ordinfo = await self.fetch_order(entry_fetch_id, symbol)
-                if not ordinfo:
-                    await asyncio.sleep(0.5)
-                    continue
-                status = ordinfo.get("status") or ordinfo.get("state") or ""
-                # ccxt puede devolver 'closed' o filled amount
-                if status.lower() in ("closed", "filled", "canceled"):
-                    # check filled
-                    filled = float(ordinfo.get("filled") or ordinfo.get("amount") or 0.0)
-                    if filled and filled > 0:
-                        entry_filled = True
-                        logger.info("Entry filled for %s: %s", symbol, ordinfo)
-                        break
-                    # if canceled, stop waiting
-                    if status.lower() == "canceled":
-                        logger.warning("Entry order canceled for %s: %s", symbol, ordinfo)
-                        break
-                await asyncio.sleep(0.5)
-        except Exception as e:
-            logger.exception("Error while polling entry order: %s", e)
+        entry_id = entry_order.get("id")
+        while time.time() - start < wait_timeout:
+            ordinfo = await self.fetch_order(entry_id, symbol)
+            if ordinfo and ordinfo.get("status") in ("closed", "filled"):
+                entry_filled = True
+                logger.info("Entry filled for %s: %s", symbol, ordinfo)
+                break
+            await asyncio.sleep(0.5)
 
-        # Si no se filled en el timeout: intentar cancelar y abortar
         if not entry_filled:
-            try:
-                if entry_fetch_id:
-                    await self.cancel_order(entry_fetch_id, symbol)
-                    logger.info("Entry order not filled in timeout, canceled: %s", entry_fetch_id)
-            except Exception:
-                pass
-            raise RuntimeError("Entry limit order not filled within timeout")
+            await self.cancel_order(entry_id, symbol)
+            raise RuntimeError(f"Entry not filled in {wait_timeout}s for {symbol}")
 
-        # 3) Una vez ejecutada la entrada, crear STOP_MARKET (SL) y TAKE_PROFIT_MARKET (TP)
-        stop_order = None
-        tp_order = None
-        try:
-            # STOP_MARKET: para protección (side invertido para cerrar la posición)
-            stop_side = "SELL" if side.upper() == "BUY" else "BUY"
-            params_stop = {"stopPrice": stop_price}
-            logger.info("Placing STOP_MARKET %s %s qty=%s stopPrice=%s", symbol, stop_side, quantity, stop_price)
-            stop_order = await self.exchange.create_order(symbol, "STOP_MARKET", stop_side, quantity, None, params_stop)
-        except Exception as e:
-            logger.exception("create_bracket_stop failed: %s", e)
-            # no re-raise todavía: intentamos still place tp
+        # Stop Market (cerrar posición)
+        stop_side = "SELL" if side.upper() == "BUY" else "BUY"
+        params_stop = {"stopPrice": stop_price}
+        stop_order = await self.exchange.create_order(symbol, "STOP_MARKET", stop_side, quantity, None, params_stop)
+        logger.info("STOP_MARKET placed: %s", stop_order)
 
-        try:
-            # TAKE_PROFIT_MARKET: colocamos market tp (trigger at take_profit_price)
-            tp_side = "SELL" if side.upper() == "BUY" else "BUY"
-            params_tp = {"stopPrice": take_profit_price}
-            logger.info("Placing TAKE_PROFIT_MARKET %s %s qty=%s stopPrice=%s", symbol, tp_side, quantity, take_profit_price)
-            tp_order = await self.exchange.create_order(symbol, "TAKE_PROFIT_MARKET", tp_side, quantity, None, params_tp)
-        except Exception as e:
-            logger.exception("create_bracket_tp failed: %s", e)
+        # Take Profit como LIMIT post-only (Maker)
+        tp_side = "SELL" if side.upper() == "BUY" else "BUY"
+        params_tp = {"timeInForce": "GTX"}
+        tp_order = await self.exchange.create_order(symbol, "LIMIT", tp_side, quantity, take_profit_price, params_tp)
+        logger.info("Take Profit LIMIT placed: %s", tp_order)
 
-        return (entry_order, stop_order, tp_order)
+        return entry_order, stop_order, tp_order
 
-    # legacy alias para compatibilidad: antes create_oco_order
     async def create_oco_order(self, *args, **kwargs):
-        logger.warning("create_oco_order is deprecated for Futures. Using create_bracket_order instead.")
+        logger.warning("create_oco_order is deprecated. Using create_bracket_order instead.")
         return await self.create_bracket_order(*args, **kwargs)
 
     async def fetch_balance(self) -> dict:
@@ -234,7 +181,7 @@ class BinanceClient:
     async def get_balance_usdt(self) -> float:
         bal = await self.fetch_balance()
         try:
-            return float(bal.get("USDT", {}).get("free", 0.0) if isinstance(bal, dict) else 0.0)
+            return float(bal.get("USDT", {}).get("free", 0.0))
         except Exception:
             return 0.0
 
