@@ -1,22 +1,31 @@
+# src/notifier/telegram_notifier.py
 import logging
-import requests
-import datetime
+import aiohttp
+from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 
 logger = logging.getLogger(__name__)
 
 class TelegramNotifier:
-    def __init__(self, telegram_token: str, chat_id: str):
-        self.telegram_token = telegram_token
+    def __init__(self, telegram_token: str = TELEGRAM_BOT_TOKEN, chat_id: str = TELEGRAM_CHAT_ID):
+        self.token = telegram_token
         self.chat_id = chat_id
+        self.api_url = f"https://api.telegram.org/bot{self.token}/sendMessage"
+        self.session = aiohttp.ClientSession()
 
-    def send(self, message: str):
-        """Enviar mensaje a Telegram + log local"""
-        timestamp = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-        full_message = f"[{timestamp} UTC]\n{message}"
-        logger.info(f"[Telegram] {full_message}")
-
-        url = f"https://api.telegram.org/bot{self.telegram_token}/sendMessage"
+    async def send_message(self, message: str):
+        """Envía un mensaje de Telegram al chat configurado."""
+        payload = {
+            "chat_id": self.chat_id,
+            "text": message,
+            "parse_mode": "HTML"
+        }
         try:
-            requests.post(url, data={"chat_id": self.chat_id, "text": full_message})
+            async with self.session.post(self.api_url, data=payload) as resp:
+                if resp.status != 200:
+                    text = await resp.text()
+                    logger.warning(f"Telegram send_message failed: {resp.status} - {text}")
         except Exception as e:
-            logger.error(f"Error enviando a Telegram: {e}")
+            logger.exception(f"Error enviando mensaje a Telegram: {e}")
+
+    async def close(self):
+        await self.session.close()
