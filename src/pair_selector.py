@@ -1,49 +1,64 @@
 """
 Pair selector module.
-Selecciona los mejores símbolos a operar en Binance Futures.
+Analyzes symbols and returns top candidates for trading.
 """
 
 import logging
-from typing import List, Tuple, Dict, Any
+import asyncio
+from typing import List, Tuple, Dict
 
 logger = logging.getLogger(__name__)
 
 
 class PairSelector:
-    def __init__(self, exchange, position_size_percent: float = 0.01):
-        """
-        Inicializa el selector de pares.
-        - exchange: cliente de exchange (ej. BinanceClient)
-        - position_size_percent: porcentaje del equity a usar por trade
-        """
+    """Selects top trading pairs based on simple heuristics (momentum, volatility, volume)."""
+
+    def __init__(self, exchange):
         self.exchange = exchange
-        self.position_size_percent = position_size_percent
+
+    async def analyze_symbol(self, symbol: str) -> Tuple[str, Dict]:
+        """Analyze a single symbol and return metrics dict."""
+        try:
+            ohlcv = await self.exchange.fetch_ohlcv(symbol, timeframe="1m", limit=100)
+            if not ohlcv:
+                return symbol, {}
+
+            closes = [c[4] for c in ohlcv]  # close prices
+            mom = closes[-1] - closes[0]
+            vol = sum([c[5] for c in ohlcv])
+            rsi_centered = 0.0
+            if len(closes) >= 2:
+                deltas = [closes[i+1] - closes[i] for i in range(len(closes)-1)]
+                up = sum([d for d in deltas if d > 0])
+                down = -sum([d for d in deltas if d < 0]) or 1
+                rs = up / down
+                rsi_centered = rs - 1.0
+
+            metrics = {"mom": mom, "rsi_centered": rsi_centered, "volume": vol}
+            return symbol, metrics
+
+        except Exception as e:
+            logger.warning("Failed to analyze symbol %s: %s", symbol, e)
+            return symbol, {}
 
     def select_top_symbols(
-        self, pairs: List[str], max_symbols: int
-    ) -> List[Tuple[str, Dict[str, Any]]]:
-        """
-        Selecciona los mejores símbolos para operar.
-        - pairs: lista de símbolos
-        - max_symbols: número máximo de símbolos a devolver
-        """
-        candidates = []
+        self, symbols: List[str], position_size_percent: float, top_n: int = 5
+    ) -> List[Tuple[str, Dict]]:
+        """Return top N symbols sorted by momentum and volume."""
+        loop = asyncio.get_event_loop()
+        tasks = [self.analyze_symbol(sym) for sym in symbols]
+        results = loop.run_until_complete(asyncio.gather(*tasks, return_exceptions=True))
 
-        for sym in pairs:
-            try:
-                # Placeholder simple: asignamos score fijo
-                metric = {
-                    "symbol": sym,
-                    "score": 1.0,
-                    "position_size_percent": self.position_size_percent,
-                }
-                candidates.append((sym, metric))
-            except Exception as e:
-                logger.warning("Error procesando símbolo %s: %s", sym, e)
+        candidates: List[Tuple[str, Dict]] = []
+        for r in results:
+            if isinstance(r, tuple):
+                candidates.append(r)
 
-        # Ordenamos por score descendente
-        candidates = sorted(
-            candidates, key=lambda x: x[1].get("score", 0), reverse=True
-        )
+        # Filter out empty metrics
+        candidates = [(s, m) for s, m in candidates if m]
 
-        return candidates[:max_symbols]
+        # Sort by simple score: momentum * volume
+        candidates.sort(key=lambda x: x[1].get("mom", 0) * x[1].get("volume", 0), reverse=True)
+
+        # Return top N
+        return candidates[:top_n]
