@@ -81,7 +81,11 @@ class BinanceClient:
     async def fetch_all_symbols(self) -> List[str]:
         try:
             markets = await self.load_markets()
-            return [sym for sym, m in markets.items() if sym.endswith("/USDT") and m.get("active", True)]
+            # Solo pares USDT, activos, y futuros PERPETUALES
+            return [
+                sym for sym, m in markets.items()
+                if sym.endswith("/USDT") and m.get("active", True) and m.get("contractType") == "PERPETUAL"
+            ]
         except Exception as e:
             logger.exception("fetch_all_symbols failed: %s", e)
             return []
@@ -115,6 +119,11 @@ class BinanceClient:
             logger.warning("No se pudo obtener market info para %s: %s", symbol, e)
             min_qty = 0
             step_size = 1
+
+        # --- Excepción SOL/USDT ---
+        if symbol == "SOL/USDT" and quantity < min_qty:
+            logger.info("Excepción SOL/USDT: permitiendo orden mínima de %s", quantity)
+            min_qty = quantity
 
         # --- Ajustar quantity con leverage ---
         quantity = quantity * LEVERAGE
@@ -158,11 +167,15 @@ class BinanceClient:
 
             # Stop Market
             stop_side = "SELL" if side.upper() == "BUY" else "BUY"
-            stop_order = await self.exchange.create_order(symbol, "STOP_MARKET", stop_side, quantity, None, {"stopPrice": stop_price})
+            stop_order = await self.exchange.create_order(
+                symbol, "STOP_MARKET", stop_side, quantity, None, {"stopPrice": stop_price}
+            )
 
             # Take Profit LIMIT
             tp_side = "SELL" if side.upper() == "BUY" else "BUY"
-            tp_order = await self.exchange.create_order(symbol, "LIMIT", tp_side, quantity, take_profit_price, {"timeInForce": "GTX"})
+            tp_order = await self.exchange.create_order(
+                symbol, "LIMIT", tp_side, quantity, take_profit_price, {"timeInForce": "GTX"}
+            )
 
             logger.info("=== CREATE_BRACKET_ORDER END ===")
             return entry_order, stop_order, tp_order
