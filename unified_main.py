@@ -1,74 +1,101 @@
-"""
-Unified CryptoBot para Binance Futures (USDT-M)
-Trading en Testnet o Real según configuración
-"""
+# unified_main.py
 import asyncio
 import logging
 import pandas as pd
-from datetime import datetime, timedelta
-
-from src.config import (
-    API_KEY,
-    API_SECRET,
-    USE_TESTNET,
-    CAPITAL_MAX_USDT,
-    POSITION_SIZE_PERCENT,
-    MAX_OPEN_TRADES,
-    DAILY_PROFIT_TARGET,
-    TRADING_PAIRS,
-)
+from src.state import bot_state
+from src.state_manager import StateManager
+from src.notifier.telegram_notifier import TelegramNotifier
 from src.exchange.binance_client import BinanceClient
+from src.pair_selector import PairSelector
 from src.executor import Executor
 from src.strategy.strategy import build_features
-from src.state import bot_state
-from src.risk.manager import RiskManager, cap_equity
-from src.pair_selector import PairSelector
-from src.notifier.telegram_notifier import TelegramNotifier
 
-logger = logging.getLogger(__name__)
+# Configuración de logging
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-class CryptoBot:
-    def __init__(self):
-        self.exchange = BinanceClient(api_key=API_KEY, api_secret=API_SECRET, use_testnet=USE_TESTNET)
-        self.executor = Executor(self.exchange)
-        self.risk_manager = RiskManager()
-        self.pair_selector = PairSelector()
-        self.telegram = TelegramNotifier()
-        self._stop_event = asyncio.Event()
-        self.pairs = TRADING_PAIRS
-        self.watchlist_dinamica = []
+# Inicializar
+state_manager = StateManager(daily_profit_target=50.0)
+telegram = TelegramNotifier()
+exchange = BinanceClient()  # Conectar a Binance real o sandbox según tu configuración
+executor = Executor(exchange)
+pair_selector = PairSelector(exchange)
 
-        # Estado de PnL diario
-        self.pnl_diario = 0.0
-        self.last_watchlist_update = datetime.utcnow() - timedelta(hours=1)
+# Parámetros
+CAPITAL_TOTAL = 2000.0
+RISK_PERCENT = 1.0
+MAX_SIMULTANEOUS_TRADES = 5
+WATCHLIST_DINAMICA = []
 
-    async def actualizar_watchlist(self):
-        """Actualizar watchlist dinámica cada hora."""
-        logger.info("Actualizando watchlist dinámica...")
-        all_symbols = await self.exchange.get_all_symbols()
-        candidates = []
+async def actualizar_watchlist():
+    global WATCHLIST_DINAMICA
+    # 1. Obtener todos los símbolos USDT-M
+    symbols = await exchange.get_all_symbols()
+    filtered = []
 
-        for sym in all_symbols:
-            ticker = await self.exchange.fetch_ticker(sym)
-            if ticker is None:
+    for s in symbols:
+        try:
+            ticker = await exchange.fetch_ticker(s)
+            vol = ticker['quoteVolume']
+            if vol < 50_000_000:
                 continue
-            vol24h = float(ticker.get("quoteVolume", 0))
-            if vol24h < 50_000_000:  # filtro volumen
+            raw = await exchange.fetch_ohlcv(s, '15m', 100)
+            df = pd.DataFrame(raw, columns=["timestamp","open","high","low","close","volume"])
+            df["atr"] = df["high"].rolling(14).max() - df["low"].rolling(14).min()
+            atr_last = df["atr"].iloc[-1]
+            price_last = df["close"].iloc[-1]
+            if atr_last / price_last < 0.005:
+                continue
+            filtered.append((s, vol))
+        except Exception:
+            continue
+
+    filtered.sort(key=lambda x: x[1], reverse=True)
+    WATCHLIST_DINAMICA = [s for s, _ in filtered[:15]]
+    await telegram.send_message(f"🔎 Watchlist actualizada: {WATCHLIST_DINAMICA}")
+
+async def run_trading_loop():
+    await actualizar_watchlist()
+    logger.info("Entering trading loop")
+
+    while True:
+        if not state_manager.can_open_new_trade():
+            await asyncio.sleep(60)
+            continue
+
+        for symbol in WATCHLIST_DINAMICA:
+            if symbol in state_manager.open_positions:
                 continue
 
-            # Obtener OHLCV 15m para ATR
-            ohlcv = await self.exchange.fetch_ohlcv(sym, timeframe="15m", limit=15)
-            if not ohlcv:
+            raw = await exchange.fetch_ohlcv(symbol, '1m', 200)
+            if raw is None or len(raw) == 0:
                 continue
-            df = pd.DataFrame(ohlcv, columns=["ts", "open", "high", "low", "close", "vol"])
-            df["atr"] = df["high"] - df["low"]
-            atr = df["atr"].mean()
-            price_close = df["close"].iloc[-1]
-            if (atr / price_close) < 0.005:  # filtro volatilidad
-                continue
-            candidates.append((sym, vol24h))
 
-        # Ordenar por volumen y tomar top 15
-        candidates.sort(key=lambda x: x[1], reverse=True)
-        self.watchlist_dinamica
+            df = pd.DataFrame(raw, columns=["timestamp","open","high","low","close","volume"])
+            df["timestamp"] = pd.to_datetime(df["timestamp"], unit='ms')
+
+            try:
+                features = build_features(df)
+            except Exception:
+                continue
+
+            mom = features.get("mom", 0)
+            rsi_centered = features.get("rsi_centered", 0)
+            score = 1.0 if mom > 0 and rsi_centered > 0 else 0.0
+
+            if score >= 1.0:
+                side = "buy" if mom > 0 else "sell"
+                size_usd = CAPITAL_TOTAL * RISK_PERCENT / 100
+                current_price = df["close"].iloc[-1]
+                await executor.open_position(symbol, side, size_usd, current_price)
+                state_manager.register_open_position(symbol, side, current_price, size_usd, current_price*0.998, current_price*1.015)
+                await telegram.send_message(f"{symbol} {side.upper()} abierto @ {current_price:.2f}")
+
+        await asyncio.sleep(60)
+
+async def main():
+    await telegram.send_message("🚀 CryptoBot iniciado en TESTNET")
+    await run_trading_loop()
+
+if __name__ == "__main__":
+    asyncio.run(main())
