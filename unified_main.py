@@ -50,10 +50,16 @@ class CryptoBot:
         filtered = []
         for sym in all_symbols:
             try:
+                market_info = self.exchange.exchange.markets.get(sym)
+                if not market_info or not market_info.get("active", False):
+                    logger.debug("Par inactivo o no disponible: %s", sym)
+                    continue
+
                 ticker = await self.exchange.fetch_ticker(sym)
                 if not ticker:
                     continue
                 vol = float(ticker.get("quoteVolume") or ticker.get("info", {}).get("quoteVolume") or 0)
+
                 ohlcv = await self.exchange.fetch_ohlcv(sym, timeframe=TIMEFRAME_TENDENCIA, limit=50)
                 if not ohlcv:
                     continue
@@ -66,7 +72,8 @@ class CryptoBot:
                 if vol < 50_000_000 or price <= 0 or atr_rel < 0.005:
                     continue
                 filtered.append((sym, vol))
-            except Exception:
+            except Exception as e:
+                logger.debug("Error al procesar %s: %s", sym, e)
                 continue
         filtered.sort(key=lambda x: x[1], reverse=True)
         global WATCHLIST_DINAMICA
@@ -105,10 +112,16 @@ class CryptoBot:
             price = float(ohlcv[-1][4])
         except Exception:
             return
+
         quantity = (size_usdt / price) * LEVERAGE
         notional = price * quantity
-        if notional > MAX_TRADE_USDT or notional < MIN_NOTIONAL_USD:
+        if notional > MAX_TRADE_USDT:
+            logger.info("%s: notional %f USDT excede límite de estrategia (%f), ignorando", sym, notional, MAX_TRADE_USDT)
             return
+        if notional < MIN_NOTIONAL_USD:
+            logger.info("%s: notional demasiado pequeño: %f USDT (min %f)", sym, notional, MIN_NOTIONAL_USD)
+            return
+
         if signal == "long":
             entry = price
             sl = entry * (1 - STOP_LOSS_PORCENTAJE)
@@ -121,6 +134,7 @@ class CryptoBot:
             side = "SELL"
         else:
             return
+
         try:
             entry_order, stop_order, tp_order = await self.exchange.create_bracket_order(
                 symbol=sym,
@@ -134,6 +148,7 @@ class CryptoBot:
             self.state.register_open_position(sym, signal, entry, size_usdt, sl, tp)
             await self.telegram.send_message(f"{sym} {signal.upper()} abierto @ {entry:.2f} USDT, SL {sl:.2f}, TP {tp:.2f}")
         except Exception as e:
+            logger.exception("Error al abrir trade %s: %s", sym, e)
             await self.telegram.send_message(f"❌ Error al abrir {sym}: {e}")
 
     async def run_trading_loop(self):
