@@ -2,12 +2,10 @@
 import asyncio
 import logging
 import pandas as pd
-from datetime import datetime
-from src.state import bot_state
+from datetime import datetime, timedelta
 from src.state_manager import StateManager
 from src.notifier.telegram_notifier import TelegramNotifier
 from src.exchange.binance_client import BinanceClient
-from src.pair_selector import PairSelector
 from src.executor import Executor
 from src.strategy.strategy import build_features
 from ta.trend import EMAIndicator
@@ -20,27 +18,23 @@ logger = logging.getLogger(__name__)
 # Inicializaciones
 state_manager = StateManager(daily_profit_target=50.0)
 telegram = TelegramNotifier()
-exchange = BinanceClient()
+exchange = BinanceClient(use_testnet=True)
 executor = Executor(exchange)
-pair_selector = PairSelector(exchange)
-
-# Parámetros de la estrategia
 CAPITAL_TOTAL = 2000.0
 RISK_PERCENT = 1.0
 MAX_SIMULTANEOUS_TRADES = 5
 WATCHLIST_DINAMICA = []
 
-# Timeframes
 TF_SIGNAL = '1m'
 TF_TREND = '15m'
 
 async def actualizar_watchlist():
     global WATCHLIST_DINAMICA
-    symbols = await exchange.get_all_symbols()
-    filtered = []
+    try:
+        symbols = await exchange.get_all_symbols()
+        filtered = []
 
-    for s in symbols:
-        try:
+        for s in symbols:
             ticker = await exchange.fetch_ticker(s)
             vol = ticker['quoteVolume']
             if vol < 50_000_000:
@@ -53,12 +47,13 @@ async def actualizar_watchlist():
             if atr_last / price_last < 0.005:
                 continue
             filtered.append((s, vol))
-        except Exception:
-            continue
 
-    filtered.sort(key=lambda x: x[1], reverse=True)
-    WATCHLIST_DINAMICA = [s for s, _ in filtered[:15]]
-    await telegram.send_message(f"🔎 Watchlist actualizada: {WATCHLIST_DINAMICA}")
+        filtered.sort(key=lambda x: x[1], reverse=True)
+        WATCHLIST_DINAMICA = [s for s, _ in filtered[:15]]
+        await telegram.send_message(f"🔎 Watchlist actualizada: {WATCHLIST_DINAMICA}")
+        logger.info(f"Watchlist actualizada: {WATCHLIST_DINAMICA}")
+    except Exception as e:
+        logger.exception("Error actualizando watchlist: %s", e)
 
 async def analizar_señal(symbol):
     try:
@@ -66,10 +61,9 @@ async def analizar_señal(symbol):
         raw_15m = await exchange.fetch_ohlcv(symbol, TF_TREND, 200)
         df_1m = pd.DataFrame(raw_1m, columns=["timestamp","open","high","low","close","volume"])
         df_15m = pd.DataFrame(raw_15m, columns=["timestamp","open","high","low","close","volume"])
-
         precio_actual = df_1m["close"].iloc[-1]
 
-        # EMA y RSI
+        # Indicadores
         ema9 = EMAIndicator(df_1m["close"], 9).ema_indicator() 
         ema21 = EMAIndicator(df_1m["close"], 21).ema_indicator()
         ema50_15m = EMAIndicator(df_15m["close"], 50).ema_indicator()
@@ -88,10 +82,17 @@ async def analizar_señal(symbol):
         return None, None
 
 async def run_trading_loop():
+    # Actualizar watchlist al inicio y cada hora
     await actualizar_watchlist()
-    logger.info("🚀 Entrando al trading loop")
+    last_watchlist_update = datetime.utcnow()
 
     while True:
+        # Actualizar watchlist cada 1 hora
+        if datetime.utcnow() - last_watchlist_update > timedelta(hours=1):
+            await actualizar_watchlist()
+            last_watchlist_update = datetime.utcnow()
+
+        # Revisión de objetivos y concurrencia
         if not state_manager.can_open_new_trade():
             await asyncio.sleep(60)
             continue
@@ -99,7 +100,6 @@ async def run_trading_loop():
         for symbol in WATCHLIST_DINAMICA:
             if len(state_manager.open_positions) >= MAX_SIMULTANEOUS_TRADES:
                 break
-
             if symbol in state_manager.open_positions:
                 continue
 
@@ -107,20 +107,27 @@ async def run_trading_loop():
             if side is None:
                 continue
 
-            # Calcular tamaño de posición
+            # Calcular tamaño y precios
             risk_usdt = CAPITAL_TOTAL * RISK_PERCENT / 100
             stop_loss_price = precio_actual * (0.998 if side=="buy" else 1.002)
             take_profit_price = precio_actual * (1.015 if side=="buy" else 0.985)
 
+            # Ejecutar orden
             await executor.open_position(symbol, side, risk_usdt, precio_actual)
             state_manager.register_open_position(symbol, side, precio_actual, risk_usdt, stop_loss_price, take_profit_price)
             await telegram.send_message(f"{symbol} {side.upper()} abierto @ {precio_actual:.2f} | SL {stop_loss_price:.2f} TP {take_profit_price:.2f}")
 
-        await asyncio.sleep(60)
+        await asyncio.sleep(30)
 
 async def main():
     await telegram.send_message("🚀 CryptoBot iniciado en TESTNET")
-    await run_trading_loop()
+    try:
+        await run_trading_loop()
+    except Exception as e:
+        logger.exception("Error en trading loop: %s", e)
+    finally:
+        await exchange.close()
+        logger.info("CryptoBot detenido")
 
 if __name__ == "__main__":
     asyncio.run(main())
