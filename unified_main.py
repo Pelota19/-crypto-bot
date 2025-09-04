@@ -8,7 +8,7 @@ Incluye monitor de cierres de posiciones y watchdog para alertas de fallas.
 import asyncio
 import logging
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from config import (
     API_KEY, API_SECRET, USE_TESTNET, POSITION_SIZE_PERCENT, MAX_OPEN_TRADES, DAILY_PROFIT_TARGET,
@@ -37,6 +37,7 @@ WATCHLIST_DINAMICA = []
 
 MAX_PRICE_PER_UNIT = 1000
 MAX_TRADE_USDT = 50
+TELEGRAM_MSG_MAX = 4000  # límite seguro Telegram
 
 class CryptoBot:
     def __init__(self):
@@ -47,7 +48,18 @@ class CryptoBot:
         self.telegram = TelegramNotifier(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
         self.state = StateManager(daily_profit_target=OBJETIVO_PROFIT_DIARIO)
         self._stop_event = asyncio.Event()
-        self.last_loop_heartbeat = datetime.utcnow()
+        self.last_loop_heartbeat = datetime.now(timezone.utc)
+
+    async def safe_send_telegram(self, msg: str):
+        """Envía mensaje a Telegram, corta si demasiado largo"""
+        try:
+            if len(msg) > TELEGRAM_MSG_MAX:
+                for i in range(0, len(msg), TELEGRAM_MSG_MAX):
+                    await self.telegram.send_message(msg[i:i+TELEGRAM_MSG_MAX])
+            else:
+                await self.telegram.send_message(msg)
+        except Exception as e:
+            logger.warning("Telegram message failed: %s", e)
 
     async def actualizar_watchlist(self):
         try:
@@ -76,9 +88,9 @@ class CryptoBot:
             filtered.sort(key=lambda x: x[1], reverse=True)
             global WATCHLIST_DINAMICA
             WATCHLIST_DINAMICA = [x[0] for x in filtered[:MAX_ACTIVE_SYMBOLS]]
-            await self.telegram.send_message(f"📊 Watchlist actualizada: {WATCHLIST_DINAMICA}")
+            await self.safe_send_telegram(f"📊 Watchlist actualizada: {WATCHLIST_DINAMICA}")
         except Exception as e:
-            await self.telegram.send_message(f"❌ Error actualizando watchlist: {e}")
+            await self.safe_send_telegram(f"❌ Error actualizando watchlist: {e}")
 
     async def analizar_signal(self, sym: str):
         try:
@@ -98,22 +110,21 @@ class CryptoBot:
             if price < ema50_15m and ema9 < ema21 and rsi14 > 35:
                 return "short"
         except Exception as e:
-            await self.telegram.send_message(f"❌ Error analizando {sym}: {e}")
+            await self.safe_send_telegram(f"❌ Error analizando {sym}: {e}")
             return None
         return None
-
-    async def ejecutar_trade(self, sym: str, signal: str):
+        async def ejecutar_trade(self, sym: str, signal: str):
         if sym in self.state.open_positions:
             return
         size_usdt = CAPITAL_TOTAL * POSITION_SIZE_PERCENT
         try:
             ohlcv = await self.exchange.fetch_ohlcv(sym, timeframe=TIMEFRAME_SIGNAL, limit=1)
             if not ohlcv:
-                await self.telegram.send_message(f"⚠️ No se pudo obtener precio para {sym}")
+                await self.safe_send_telegram(f"⚠️ No se pudo obtener precio para {sym}")
                 return
             price = float(ohlcv[-1][4])
         except Exception as e:
-            await self.telegram.send_message(f"❌ Error obteniendo precio para {sym}: {e}")
+            await self.safe_send_telegram(f"❌ Error obteniendo precio para {sym}: {e}")
             return
 
         # Excepción SOL/USDT para abrir orden mínima
@@ -121,16 +132,19 @@ class CryptoBot:
         if sym == "SOL/USDT":
             min_notional = min(MIN_NOTIONAL_USD, 5)
 
-        quantity = (size_usdt / price) * LEVERAGE
+        quantity = (size_usdt / price)
         notional = price * quantity
         if notional > MAX_TRADE_USDT:
-            quantity = MAX_TRADE_USDT / price  # ajustar cantidad máxima
+            quantity = MAX_TRADE_USDT / price
         if notional < min_notional:
             if sym != "SOL/USDT":
-                await self.telegram.send_message(f"⚠️ Orden ignorada para {sym}: Notional {notional:.2f} < mínimo {min_notional}")
+                await self.safe_send_telegram(f"⚠️ Orden ignorada {sym}: Notional {notional:.2f} < min {min_notional}")
                 return
             else:
-                quantity = min_notional / price  # abrir mínima para SOL
+                quantity = min_notional / price
+
+        # Aplicar leverage
+        quantity *= LEVERAGE
 
         if signal == "long":
             entry = price
@@ -156,14 +170,14 @@ class CryptoBot:
                 wait_timeout=30
             )
             if entry_order:
-                self.state.register_open_position(sym, signal, entry, quantity*price/LEVERAGE, sl, tp)
-                await self.telegram.send_message(
-                    f"✅ {sym} {signal.upper()} abierto @ {entry:.2f} USDT\nSL {sl:.2f} | TP {tp:.2f} | Cant {quantity:.6f}"
+                self.state.register_open_position(sym, signal, entry, quantity/LEVERAGE*price, sl, tp)
+                await self.safe_send_telegram(
+                    f"✅ {sym} {signal.upper()} abierto @ {entry:.2f} USDT\nSL {sl:.2f} | TP {tp:.2f} | Qty {quantity:.6f}"
                 )
             else:
-                await self.telegram.send_message(f"❌ No se pudo abrir orden para {sym}")
+                await self.safe_send_telegram(f"❌ No se pudo abrir orden para {sym}")
         except Exception as e:
-            await self.telegram.send_message(f"❌ Error al abrir {sym}: {e}")
+            await self.safe_send_telegram(f"❌ Error al abrir {sym}: {e}")
 
     async def procesar_par(self, sym: str):
         signal = await self.analizar_signal(sym)
@@ -172,7 +186,7 @@ class CryptoBot:
 
     async def run_trading_loop(self):
         while not self._stop_event.is_set():
-            self.last_loop_heartbeat = datetime.utcnow()  # actualizamos heartbeat
+            self.last_loop_heartbeat = datetime.now(timezone.utc)
             self.state.reset_daily_if_needed()
             if not self.state.can_open_new_trade() or len(self.state.open_positions) >= MAX_OPERATIONS_SIMULTANEAS:
                 await asyncio.sleep(60)
@@ -185,48 +199,46 @@ class CryptoBot:
 async def periodic_report(bot):
     while True:
         try:
-            await asyncio.sleep(3600)  # cada 1 hora
+            await asyncio.sleep(3600)
             open_syms = list(bot.state.open_positions.keys())
             pnl = getattr(bot.state, "realized_pnl_today", 0.0)
-            timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
-            await bot.telegram.send_message(
+            timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+            await bot.safe_send_telegram(
                 f"🕒 Reporte horario {timestamp}\n"
                 f"📌 Operaciones abiertas: {len(open_syms)}\n"
                 f"📌 PnL diario: {pnl:.2f} USDT\n"
                 f"📌 Watchlist: {WATCHLIST_DINAMICA}"
             )
         except Exception as e:
-            await bot.telegram.send_message(f"❌ Error en reporte horario: {e}")
+            await bot.safe_send_telegram(f"❌ Error en reporte horario: {e}")
 
 async def monitor_positions(bot):
-    """Monitorea cierres de posiciones y envía mensajes a Telegram"""
     while True:
         try:
             closed_positions = bot.state.check_positions_closed()
             for pos in closed_positions:
                 sym = pos["symbol"]
                 pnl = pos["pnl"]
-                reason = pos["reason"]  # 'SL' o 'TP'
-                await bot.telegram.send_message(f"📉 {sym} cerrada por {reason}. PnL: {pnl:.2f} USDT")
+                reason = pos["reason"]
+                await bot.safe_send_telegram(f"📉 {sym} cerrada por {reason}. PnL: {pnl:.2f} USDT")
         except Exception as e:
-            await bot.telegram.send_message(f"❌ Error en monitor_positions: {e}")
+            await bot.safe_send_telegram(f"❌ Error monitor_positions: {e}")
         await asyncio.sleep(5)
 
 async def watchdog_loop(bot):
-    """Detecta si el bot se traba o se detiene"""
     while True:
         try:
             await asyncio.sleep(60)
-            if (datetime.utcnow() - bot.last_loop_heartbeat) > timedelta(seconds=120):
-                await bot.telegram.send_message("⚠️ Alert: posible bloqueo del bot")
+            if (datetime.now(timezone.utc) - bot.last_loop_heartbeat) > timedelta(seconds=120):
+                await bot.safe_send_telegram("⚠️ Alert: posible bloqueo del bot")
         except Exception as e:
-            await bot.telegram.send_message(f"❌ Error en watchdog: {e}")
+            await bot.safe_send_telegram(f"❌ Error watchdog: {e}")
 
 async def main():
     bot = CryptoBot()
     tasks = []
     try:
-        await bot.telegram.send_message("🚀 CryptoBot iniciado en TESTNET")
+        await bot.safe_send_telegram("🚀 CryptoBot iniciado en TESTNET")
         await bot.actualizar_watchlist()
         tasks.append(asyncio.create_task(periodic_report(bot)))
         tasks.append(asyncio.create_task(monitor_positions(bot)))
@@ -234,10 +246,10 @@ async def main():
         await bot.run_trading_loop()
     except KeyboardInterrupt:
         logger.info("Interrupción por teclado recibida")
-        await bot.telegram.send_message("⏹️ CryptoBot detenido manualmente")
+        await bot.safe_send_telegram("⏹️ CryptoBot detenido manualmente")
     except Exception as e:
         logger.exception("Error crítico en main: %s", e)
-        await bot.telegram.send_message(f"❌ Error crítico en main: {e}")
+        await bot.safe_send_telegram(f"❌ Error crítico en main: {e}")
     finally:
         for t in tasks:
             t.cancel()
