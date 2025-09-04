@@ -27,14 +27,14 @@ class BinanceClient:
             "enableRateLimit": True,
             "options": opts,
         })
-        # Activa sandbox/testnet si está configurado
         if use_testnet:
             try:
                 self.exchange.set_sandbox_mode(True)
-                logger.info("Binance sandbox mode enabled in ccxt client")
+                logger.info("Binance sandbox mode enabled")
             except Exception:
-                logger.warning("Unable to enable sandbox mode on ccxt client (may not be available in this ccxt build)")
+                logger.warning("Sandbox/testnet mode no disponible en esta build de ccxt")
 
+    # ---------- Market Data ----------
     async def fetch_ohlcv(self, symbol: str, timeframe: str = "1m", limit: int = 200) -> List:
         try:
             return await self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=None, limit=limit)
@@ -49,72 +49,75 @@ class BinanceClient:
             logger.exception("fetch_ticker error for %s: %s", symbol, e)
             return None
 
+    async def fetch_all_symbols(self) -> List[str]:
+        """Retorna todos los pares USDT-M futures disponibles."""
+        try:
+            markets = await self.exchange.load_markets()
+            return [m for m in markets if "USDT" in m]
+        except Exception as e:
+            logger.exception("fetch_all_symbols failed: %s", e)
+            return []
+
+    # ---------- Orders ----------
     async def create_market_order(self, symbol: str, side: str, amount: float) -> dict:
-        """Crea una orden de mercado (amount = unidades del activo base)."""
         if self.dry_run:
             oid = f"sim-market-{int(time.time()*1000)}"
             logger.info("DRY_RUN market order simulated: %s %s %f (%s)", symbol, side, amount, oid)
             return {"id": oid, "status": "closed", "filled": amount, "average": None}
         try:
-            order = await self.exchange.create_order(symbol, "market", side, amount)
-            return order
+            return await self.exchange.create_order(symbol, "market", side, amount)
         except Exception as e:
             logger.exception("create_market_order failed: %s", e)
             raise
 
     async def create_limit_order(self, symbol: str, side: str, amount: float, price: float, params: dict = None) -> dict:
-        """Crea una orden límite (TP/SL)."""
         params = params or {}
         if self.dry_run:
             oid = f"sim-limit-{int(time.time()*1000)}"
             logger.info("DRY_RUN limit order simulated: %s %s %f @ %f (%s)", symbol, side, amount, price, oid)
             return {"id": oid, "status": "open", "price": price, "amount": amount}
         try:
-            order = await self.exchange.create_order(symbol, "limit", side, amount, price, params)
-            return order
+            return await self.exchange.create_order(symbol, "limit", side, amount, price, params)
         except Exception as e:
             logger.exception("create_limit_order failed: %s", e)
             raise
 
-    async def fetch_order(self, order_id: str, symbol: str = None) -> Optional[dict]:
-        if self.dry_run and order_id.startswith("sim"):
-            if order_id.startswith("sim-market"):
-                return {"id": order_id, "status": "closed", "filled": None}
-            return {"id": order_id, "status": "open"}
-        try:
-            return await self.exchange.fetch_order(order_id, symbol)
-        except Exception as e:
-            logger.exception("fetch_order error: %s", e)
-            return None
-
-    async def cancel_order(self, order_id: str, symbol: str):
+    async def create_oco_order(self, symbol: str, side: str, quantity: float, stop_price: float, take_profit_price: float):
+        """
+        Crea OCO en Binance Futures usando STOP_MARKET + TAKE_PROFIT_LIMIT.
+        side: 'BUY' o 'SELL' (inverso al abrir short/long)
+        """
         if self.dry_run:
-            logger.info("DRY_RUN cancel order %s %s", order_id, symbol)
-            return {"id": order_id, "status": "canceled"}
+            oid = f"sim-oco-{int(time.time()*1000)}"
+            logger.info("DRY_RUN OCO simulated: %s %s %f, stop %f, tp %f (%s)",
+                        symbol, side, quantity, stop_price, take_profit_price, oid)
+            return {"id": oid, "status": "open"}
         try:
-            return await self.exchange.cancel_order(order_id, symbol)
+            # Binance Futures no tiene OCO nativo, simulamos con dos órdenes
+            side_opposite = "SELL" if side=="BUY" else "BUY"
+            # Take profit limit
+            await self.exchange.create_order(symbol, "LIMIT", side, quantity, take_profit_price)
+            # Stop market
+            await self.exchange.create_order(symbol, "STOP_MARKET", side_opposite, quantity, None, {"stopPrice": stop_price})
+            return {"status": "open"}
         except Exception as e:
-            logger.exception("cancel_order error: %s", e)
+            logger.exception("create_oco_order failed: %s", e)
             raise
 
     async def fetch_balance(self) -> dict:
-        """Obtiene el balance de futuros. En DRY_RUN devuelve un balance simulado."""
         if self.dry_run:
             return {"USDT": {"free": 10000.0, "used": 0.0, "total": 10000.0}}
         try:
-            bal = await self.exchange.fetch_balance(params={"type": "future"})
-            return bal
+            return await self.exchange.fetch_balance(params={"type":"future"})
         except Exception as e:
             logger.exception("fetch_balance error: %s", e)
             return {}
 
     async def get_balance_usdt(self) -> float:
-        """Devuelve el balance libre en USDT (futuros)."""
         bal = await self.fetch_balance()
         try:
             return bal["USDT"]["free"]
         except Exception:
-            logger.warning("No se pudo leer balance USDT, devolviendo 0")
             return 0.0
 
     async def close(self):
