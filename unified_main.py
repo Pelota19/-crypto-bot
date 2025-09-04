@@ -1,133 +1,186 @@
-# unified_main.py
+"""
+Unified CryptoBot para Binance Futures (USDT-M) - versión funcional
+Incluye watchlist dinámica, scalping EMA+RSI y gestión de riesgo.
+"""
 import asyncio
 import logging
-import pandas as pd
 from datetime import datetime, timedelta
-from src.state_manager import StateManager
-from src.notifier.telegram_notifier import TelegramNotifier
-from src.exchange.binance_client import BinanceClient
-from src.executor import Executor
-from src.strategy.strategy import build_features
+
+import pandas as pd
+import ccxt.async_support as ccxt
 from ta.trend import EMAIndicator
 from ta.momentum import RSIIndicator
 
-# Logging
-logging.basicConfig(level=logging.INFO)
+from src.config import (
+    API_KEY, API_SECRET, USE_TESTNET, POSITION_SIZE_PERCENT, MAX_OPEN_TRADES,
+    DAILY_PROFIT_TARGET, CAPITAL_MAX_USDT, TIMEFRAME, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+)
+from src.state import StateManager
+from src.notifier.telegram_notifier import TelegramNotifier
+
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
-# Inicializaciones
-state_manager = StateManager(daily_profit_target=50.0)
-telegram = TelegramNotifier()
-exchange = BinanceClient(use_testnet=True)
-executor = Executor(exchange)
-CAPITAL_TOTAL = 2000.0
-RISK_PERCENT = 1.0
-MAX_SIMULTANEOUS_TRADES = 5
-WATCHLIST_DINAMICA = []
+# ----- Instancias globales -----
+state_manager = StateManager(daily_profit_target=DAILY_PROFIT_TARGET)
+telegram = TelegramNotifier(telegram_token=TELEGRAM_BOT_TOKEN, chat_id=TELEGRAM_CHAT_ID)
 
-TF_SIGNAL = '1m'
-TF_TREND = '15m'
+# ----- Cliente Binance -----
+class BinanceClient:
+    def __init__(self, api_key, api_secret, testnet=False):
+        opts = {'defaultType': 'future'}
+        self.exchange = ccxt.binance({
+            'apiKey': api_key,
+            'secret': api_secret,
+            'enableRateLimit': True,
+            'options': opts,
+        })
+        if testnet:
+            try:
+                self.exchange.set_sandbox_mode(True)
+                logger.info("Binance sandbox mode enabled")
+            except Exception:
+                logger.warning("No se pudo activar sandbox mode en ccxt")
 
-async def actualizar_watchlist():
-    global WATCHLIST_DINAMICA
-    try:
-        symbols = await exchange.get_all_symbols()
-        filtered = []
+    async def fetch_ohlcv(self, symbol, timeframe='1m', limit=200):
+        try:
+            return await self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+        except Exception as e:
+            logger.exception("fetch_ohlcv error: %s", e)
+            return []
 
-        for s in symbols:
-            ticker = await exchange.fetch_ticker(s)
-            vol = ticker['quoteVolume']
-            if vol < 50_000_000:
-                continue
-            raw = await exchange.fetch_ohlcv(s, TF_TREND, 100)
-            df = pd.DataFrame(raw, columns=["timestamp","open","high","low","close","volume"])
-            df["atr"] = df["high"].rolling(14).max() - df["low"].rolling(14).min()
-            atr_last = df["atr"].iloc[-1]
-            price_last = df["close"].iloc[-1]
-            if atr_last / price_last < 0.005:
-                continue
-            filtered.append((s, vol))
+    async def fetch_balance(self):
+        try:
+            bal = await self.exchange.fetch_balance(params={"type": "future"})
+            return bal
+        except Exception as e:
+            logger.exception("fetch_balance error: %s", e)
+            return {}
 
-        filtered.sort(key=lambda x: x[1], reverse=True)
-        WATCHLIST_DINAMICA = [s for s, _ in filtered[:15]]
-        await telegram.send_message(f"🔎 Watchlist actualizada: {WATCHLIST_DINAMICA}")
-        logger.info(f"Watchlist actualizada: {WATCHLIST_DINAMICA}")
-    except Exception as e:
-        logger.exception("Error actualizando watchlist: %s", e)
+    async def create_order(self, symbol, side, amount, price=None, order_type="market"):
+        try:
+            if order_type == "market":
+                return await self.exchange.create_order(symbol, "market", side, amount)
+            elif order_type == "limit":
+                return await self.exchange.create_order(symbol, "limit", side, amount, price)
+        except Exception as e:
+            logger.exception("create_order failed: %s", e)
+            return None
 
-async def analizar_señal(symbol):
-    try:
-        raw_1m = await exchange.fetch_ohlcv(symbol, TF_SIGNAL, 200)
-        raw_15m = await exchange.fetch_ohlcv(symbol, TF_TREND, 200)
-        df_1m = pd.DataFrame(raw_1m, columns=["timestamp","open","high","low","close","volume"])
-        df_15m = pd.DataFrame(raw_15m, columns=["timestamp","open","high","low","close","volume"])
-        precio_actual = df_1m["close"].iloc[-1]
+    async def close(self):
+        try:
+            await self.exchange.close()
+        except Exception:
+            pass
 
-        # Indicadores
-        ema9 = EMAIndicator(df_1m["close"], 9).ema_indicator() 
-        ema21 = EMAIndicator(df_1m["close"], 21).ema_indicator()
-        ema50_15m = EMAIndicator(df_15m["close"], 50).ema_indicator()
-        rsi14 = RSIIndicator(df_1m["close"], 14).rsi()
+# ----- CryptoBot -----
+class CryptoBot:
+    def __init__(self):
+        self.exchange = BinanceClient(API_KEY, API_SECRET, testnet=USE_TESTNET)
+        self.watchlist = []
+        self.max_active = MAX_OPEN_TRADES
+        self.position_pct = POSITION_SIZE_PERCENT
 
-        signal_long = (precio_actual > ema50_15m.iloc[-1]) and (ema9.iloc[-2] < ema21.iloc[-2] and ema9.iloc[-1] > ema21.iloc[-1]) and (rsi14.iloc[-1] < 65)
-        signal_short = (precio_actual < ema50_15m.iloc[-1]) and (ema9.iloc[-2] > ema21.iloc[-2] and ema9.iloc[-1] < ema21.iloc[-1]) and (rsi14.iloc[-1] > 35)
-
-        if signal_long:
-            return "buy", precio_actual
-        elif signal_short:
-            return "sell", precio_actual
-        return None, precio_actual
-    except Exception as e:
-        logger.exception("Error analizando señal %s: %s", symbol, e)
-        return None, None
-
-async def run_trading_loop():
-    # Actualizar watchlist al inicio y cada hora
-    await actualizar_watchlist()
-    last_watchlist_update = datetime.utcnow()
-
-    while True:
-        # Actualizar watchlist cada 1 hora
-        if datetime.utcnow() - last_watchlist_update > timedelta(hours=1):
-            await actualizar_watchlist()
-            last_watchlist_update = datetime.utcnow()
-
-        # Revisión de objetivos y concurrencia
-        if not state_manager.can_open_new_trade():
-            await asyncio.sleep(60)
-            continue
-
-        for symbol in WATCHLIST_DINAMICA:
-            if len(state_manager.open_positions) >= MAX_SIMULTANEOUS_TRADES:
-                break
-            if symbol in state_manager.open_positions:
+    async def actualizar_watchlist(self):
+        """Genera watchlist dinámica cada hora"""
+        logger.info("Actualizando watchlist dinámica")
+        markets = await self.exchange.exchange.fetch_markets()
+        symbols = [m['symbol'] for m in markets if '/USDT' in m['symbol']]
+        vol_filtered = []
+        for sym in symbols:
+            try:
+                ticker = await self.exchange.exchange.fetch_ticker(sym)
+                if ticker['quoteVolume'] >= 50_000_000:
+                    vol_filtered.append(sym)
+            except Exception:
                 continue
 
-            side, precio_actual = await analizar_señal(symbol)
-            if side is None:
+        atr_filtered = []
+        for sym in vol_filtered:
+            raw = await self.exchange.fetch_ohlcv(sym, timeframe='15m', limit=15)
+            if not raw:
                 continue
+            df = pd.DataFrame(raw, columns=["ts", "open", "high", "low", "close", "vol"])
+            df["atr"] = df["high"] - df["low"]
+            atr = df["atr"].mean()
+            close_price = df["close"].iloc[-1]
+            if (atr / close_price) > 0.005:
+                atr_filtered.append((sym, ticker['quoteVolume']))
 
-            # Calcular tamaño y precios
-            risk_usdt = CAPITAL_TOTAL * RISK_PERCENT / 100
-            stop_loss_price = precio_actual * (0.998 if side=="buy" else 1.002)
-            take_profit_price = precio_actual * (1.015 if side=="buy" else 0.985)
+        atr_filtered.sort(key=lambda x: x[1], reverse=True)
+        self.watchlist = [s[0] for s in atr_filtered[:15]]
+        await telegram.send_message(f"🔹 Watchlist actualizada: {self.watchlist}")
 
-            # Ejecutar orden
-            await executor.open_position(symbol, side, risk_usdt, precio_actual)
-            state_manager.register_open_position(symbol, side, precio_actual, risk_usdt, stop_loss_price, take_profit_price)
-            await telegram.send_message(f"{symbol} {side.upper()} abierto @ {precio_actual:.2f} | SL {stop_loss_price:.2f} TP {take_profit_price:.2f}")
+    async def calcular_señales(self, symbol):
+        """Calcula EMA y RSI para el par"""
+        raw_1m = await self.exchange.fetch_ohlcv(symbol, timeframe='1m', limit=50)
+        raw_15m = await self.exchange.fetch_ohlcv(symbol, timeframe='15m', limit=50)
+        if not raw_1m or not raw_15m:
+            return None
+        df_1m = pd.DataFrame(raw_1m, columns=["ts","open","high","low","close","vol"])
+        df_15m = pd.DataFrame(raw_15m, columns=["ts","open","high","low","close","vol"])
+        close_1m = df_1m["close"]
+        close_15m = df_15m["close"]
 
-        await asyncio.sleep(30)
+        ema9 = EMAIndicator(close_1m, window=9).ema_indicator()[-1]
+        ema21 = EMAIndicator(close_1m, window=21).ema_indicator()[-1]
+        ema50 = EMAIndicator(close_15m, window=50).ema_indicator()[-1]
+        rsi = RSIIndicator(close_1m, window=14).rsi()[-1]
+        price = close_1m.iloc[-1]
 
+        if price > ema50 and ema9 > ema21 and rsi < 65:
+            return "long", price
+        elif price < ema50 and ema9 < ema21 and rsi > 35:
+            return "short", price
+        return None, price
+
+    async def calcular_tamano(self, price):
+        bal = await self.exchange.fetch_balance()
+        usdt_balance = bal.get('USDT', {}).get('free', CAPITAL_MAX_USDT)
+        riesgo_usdt = usdt_balance * self.position_pct
+        return riesgo_usdt / price  # cantidad de la criptomoneda
+
+    async def ejecutar_trade(self, symbol, side, price):
+        cantidad = await self.calcular_tamano(price)
+        # StopLoss y TP simples (ej: 0.2% SL, RRR 1.5)
+        sl = price * (0.998 if side=="long" else 1.002)
+        tp = price + (price - sl)*1.5 if side=="long" else price - (sl - price)*1.5
+        order = await self.exchange.create_order(symbol, side, cantidad, price=price, order_type="market")
+        state_manager.register_open_position(symbol, side, price, cantidad, sl, tp)
+        await telegram.send_message(f"{symbol} {side.upper()} abierto @ {price:.2f} USDT")
+
+    async def run_trading_loop(self):
+        await self.actualizar_watchlist()
+        while True:
+            state_manager.reset_daily_if_needed()
+            if not state_manager.can_open_new_trade():
+                await asyncio.sleep(60)
+                continue
+            for sym in self.watchlist:
+                if sym in state_manager.open_positions:
+                    continue
+                side, price = await self.calcular_señales(sym)
+                if side:
+                    await self.ejecutar_trade(sym, side, price)
+                    if len(state_manager.open_positions) >= self.max_active:
+                        break
+            await asyncio.sleep(1)
+
+    async def stop(self):
+        await self.exchange.close()
+        await telegram.send_message("⛔ CryptoBot detenido")
+
+# ----- Main -----
 async def main():
-    await telegram.send_message("🚀 CryptoBot iniciado en TESTNET")
+    bot = CryptoBot()
+    await telegram.send_message("🚀 CryptoBot iniciado")
     try:
-        await run_trading_loop()
+        await bot.run_trading_loop()
+    except asyncio.CancelledError:
+        await bot.stop()
     except Exception as e:
-        logger.exception("Error en trading loop: %s", e)
-    finally:
-        await exchange.close()
-        logger.info("CryptoBot detenido")
+        logger.exception("Error en el trading loop: %s", e)
+        await bot.stop()
 
 if __name__ == "__main__":
     asyncio.run(main())
