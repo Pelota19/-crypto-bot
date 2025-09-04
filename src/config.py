@@ -1,49 +1,17 @@
-"""
-Compatibility shim: export common names expected across the codebase.
-Includes paths, API keys, risk management, and other global constants.
-"""
-from config import settings as _s
+import os
 from pathlib import Path
+from dotenv import load_dotenv
+load_dotenv()
 
-# API / Exchange
-API_KEY = _s.API_KEY
-API_SECRET = _s.API_SECRET
-USE_TESTNET = _s.USE_TESTNET
-DRY_RUN = _s.DRY_RUN
+API_KEY = os.getenv("BINANCE_API_KEY", "")
+API_SECRET = os.getenv("BINANCE_API_SECRET", "")
+USE_TESTNET = os.getenv("USE_TESTNET", "True").lower() in ("true", "1")
+POSITION_SIZE_PERCENT = 0.02
+MAX_OPEN_TRADES = 5
+CAPITAL_MAX_USDT = 2000.0
+TRADING_PAIRS = ["BTC/USDT", "ETH/USDT"]
 
-BINANCE_API_KEY = API_KEY
-BINANCE_API_SECRET = API_SECRET
-BINANCE_TESTNET = USE_TESTNET
-
-# Risk / sizing
-MAX_INVESTMENT = _s.MAX_INVESTMENT
-MAX_RISK_PER_TRADE = _s.MAX_RISK_PER_TRADE
-DAILY_PROFIT_TARGET = _s.DAILY_PROFIT_TARGET
-CAPITAL_MAX_USDT = _s.CAPITAL_MAX_USDT
-POSITION_SIZE_PERCENT = getattr(_s, "POSITION_SIZE_PERCENT", 0.02)
-MAX_OPEN_TRADES = _s.MAX_OPEN_TRADES
-MAX_DAILY_DRAWDOWN = getattr(_s, "MAX_DAILY_DRAWDOWN", 5.0)
-RISK_REWARD_RATIO = getattr(_s, "RISK_REWARD_RATIO", 2.0)
-
-# Trading / pairs
-TRADING_PAIRS = _s.TRADING_PAIRS
-STRATEGY = getattr(_s, "STRATEGY", "scalping_ema_rsi")
-TIMEFRAME = getattr(_s, "TIMEFRAME", "1m")
-MIN_NOTIONAL_USD = getattr(_s, "MIN_NOTIONAL_USD", 10.0)
-MAX_ACTIVE_SYMBOLS = getattr(_s, "MAX_ACTIVE_SYMBOLS", 5)
-
-# Telegram
-TELEGRAM_BOT_TOKEN = _s.TELEGRAM_BOT_TOKEN
-TELEGRAM_CHAT_ID = _s.TELEGRAM_CHAT_ID
-
-# Logging
-LOG_LEVEL = _s.LOG_LEVEL
-
-# Paths
-DATA_DIR = _s.DATA_DIR
-LOGS_DIR = _s.LOGS_DIR
-DB_PATH = DATA_DIR / "bot_state.sqlite"  # agregado para compatibilidad con sqlite_store
-
-# Ensure directories exist
+DATA_DIR = Path("data")
+LOGS_DIR = Path("logs")
 DATA_DIR.mkdir(exist_ok=True)
 LOGS_DIR.mkdir(exist_ok=True)
