@@ -1,7 +1,7 @@
 """
 Unified CryptoBot - Binance Futures (USDT-M)
 Ejecución real o sandbox según configuración.
-Scalping EMA/RSI con gestión de riesgo estricta y OCO.
+Scalping EMA/RSI con gestión de riesgo estricta y Bracket orders (entrada LIMIT post-only, SL + TP).
 """
 import asyncio
 import logging
@@ -50,47 +50,36 @@ class CryptoBot:
         all_symbols = await self.exchange.fetch_all_symbols()
         filtered = []
         for sym in all_symbols:
-            # Si ya tenemos demasiados candidatos, podemos romper temprano (optimización opcional)
             try:
                 ticker = await self.exchange.fetch_ticker(sym)
                 if not ticker:
-                    logger.debug("Skipping %s: no ticker", sym)
                     continue
-                # algunos tickers no contienen quoteVolume según exchange/version de ccxt
                 vol = ticker.get("quoteVolume") or ticker.get("info", {}).get("quoteVolume") or 0
                 try:
                     vol = float(vol)
                 except Exception:
                     vol = 0.0
                 if vol < 50_000_000:
-                    logger.debug("Skipping %s: low 24h volume %s", sym, vol)
                     continue
-                # ATR 14 en 15m (verifica que ohlcv exista)
                 ohlcv = await self.exchange.fetch_ohlcv(sym, timeframe=TIMEFRAME_TENDENCIA, limit=50)
                 if not ohlcv:
-                    logger.debug("Skipping %s: no ohlcv 15m", sym)
                     continue
                 df = pd.DataFrame(ohlcv, columns=["timestamp","open","high","low","close","volume"])
-                # AverageTrueRange puede fallar si datos insuficientes
                 try:
                     atr = AverageTrueRange(df['high'], df['low'], df['close'], window=14).average_true_range().iloc[-1]
-                except Exception as e:
-                    logger.debug("ATR calc failed for %s: %s", sym, e)
+                except Exception:
                     continue
                 price = float(df['close'].iloc[-1])
                 if price <= 0:
                     continue
                 atr_rel = atr / price
                 if atr_rel < 0.005:
-                    logger.debug("Skipping %s: atr_rel %f < 0.005", sym, atr_rel)
                     continue
                 filtered.append((sym, vol))
             except Exception as e:
-                # No romper por un símbolo problemático
-                logger.debug("Error analiz. %s: %s (se ignora el símbolo)", sym, e)
+                logger.debug("Skip symbol %s due to error: %s", sym, e)
                 continue
 
-        # Ordenar por volumen y elegir top N
         filtered.sort(key=lambda x: x[1], reverse=True)
         global WATCHLIST_DINAMICA
         WATCHLIST_DINAMICA = [x[0] for x in filtered[:MAX_ACTIVE_SYMBOLS]]
@@ -125,11 +114,11 @@ class CryptoBot:
         return None
 
     async def ejecutar_trade(self, sym: str, signal: str):
-        """Calcula tamaño, SL, TP y abre posición OCO."""
+        """Calcula tamaño, SL, TP y abre posición usando create_bracket_order."""
         if sym in self.state.open_positions:
             logger.debug("Ya existe posición en %s, saltando", sym)
             return
-        # tamaño en USDT (CAPITAL_TOTAL aquí es fijo; podrías usar capital dinámico)
+        # Calculo del tamaño en USDT arriesgando POSITION_SIZE_PERCENT del capital
         size_usdt = CAPITAL_TOTAL * POSITION_SIZE_PERCENT
         try:
             ohlcv = await self.exchange.fetch_ohlcv(sym, timeframe=TIMEFRAME_SIGNAL, limit=1)
@@ -138,6 +127,14 @@ class CryptoBot:
             price = float(ohlcv[-1][4])
         except Exception as e:
             logger.debug("No se pudo obtener precio para %s: %s", sym, e)
+            return
+
+        # convertir size_usdt a cantidad en base asset (quantity)
+        try:
+            quantity = size_usdt / price
+            # opcional: ajustar por min_notional o step size según exchange (a futuro)
+        except Exception as e:
+            logger.debug("Error calculando quantity para %s: %s", sym, e)
             return
 
         if signal == "long":
@@ -153,19 +150,29 @@ class CryptoBot:
         else:
             return
 
+        # Asegurarse que la posición no sea demasiado pequeña por notional
+        notional = entry * quantity
+        if notional < MIN_NOTIONAL_USD:
+            logger.info("Notional demasiado pequeño para %s: %f USDT (min %f)", sym, notional, MIN_NOTIONAL_USD)
+            return
+
+        # Intentar crear bracket (entrada LIMIT post-only, esperar fill, colocar SL+TP)
         try:
-            await self.exchange.create_oco_order(
+            entry_order, stop_order, tp_order = await self.exchange.create_bracket_order(
                 symbol=sym,
                 side=side,
-                quantity=size_usdt,
+                quantity=quantity,
+                entry_price=entry,
                 stop_price=sl,
-                take_profit_price=tp
+                take_profit_price=tp,
+                wait_timeout=30  # segundos para esperar fill (ajustable)
             )
+            # Registrar en estado si la entrada fue colocada/ejecutada
             self.state.register_open_position(sym, signal, entry, size_usdt, sl, tp)
             await self.telegram.send_message(f"{sym} {signal.upper()} abierto @ {entry:.2f} USDT, SL {sl:.2f}, TP {tp:.2f}")
-            logger.info("Simulated/placed OCO for %s %s entry=%.8f sl=%.8f tp=%.8f", sym, side, entry, sl, tp)
         except Exception as e:
-            logger.exception("Failed to place OCO for %s: %s", sym, e)
+            logger.exception("Failed to place bracket for %s: %s", sym, e)
+            await self.telegram.send_message(f"❌ Error al abrir {sym}: {e}")
 
     async def run_trading_loop(self):
         while not self._stop_event.is_set():
@@ -173,7 +180,6 @@ class CryptoBot:
             if not self.state.can_open_new_trade() or len(self.state.open_positions) >= MAX_OPERATIONS_SIMULTANEAS:
                 await asyncio.sleep(60)
                 continue
-            # procesar concurridamente los símbolos de la watchlist
             tasks = [self.procesar_par(sym) for sym in WATCHLIST_DINAMICA]
             if tasks:
                 await asyncio.gather(*tasks, return_exceptions=True)
@@ -189,7 +195,6 @@ async def periodic_watchlist(bot):
     while True:
         await asyncio.sleep(3600)
         await bot.actualizar_watchlist()
-        # resumen horario
         open_syms = list(bot.state.open_positions.keys())
         pnl = getattr(bot.state, "realized_pnl_today", 0.0)
         await bot.telegram.send_message(f"📈 Estado horario: {len(open_syms)} operaciones abiertas, PnL diario: {pnl:.2f} USDT")
@@ -208,14 +213,12 @@ async def main():
     except Exception as e:
         logger.exception("Error crítico en main: %s", e)
     finally:
-        # Cancelar tarea periódica si existe
         if periodic_task:
             periodic_task.cancel()
             try:
                 await periodic_task
             except asyncio.CancelledError:
                 pass
-        # Cerrar recursos de red/ccxt/aiohttp
         try:
             await bot.exchange.close()
         except Exception:
