@@ -121,7 +121,33 @@ class BinanceClient:
         """
         Entrada LIMIT post-only, espera fill, luego SL + TP.
         TP siempre como LIMIT para comisiones de Maker.
+        Logging extendido y validación mínima de qty.
         """
+        logger.info("=== CREATE_BRACKET_ORDER START ===")
+        logger.info("Symbol: %s | Side: %s | Qty: %s | Entry: %s | Stop: %s | TP: %s",
+                    symbol, side, quantity, entry_price, stop_price, take_profit_price)
+
+        # --- Obtener info de mercado para validar mínimo qty ---
+        try:
+            market = self.exchange.markets[symbol]
+            min_qty = float(market.get("limits", {}).get("amount", {}).get("min", 0))
+            step_size = float(market.get("limits", {}).get("amount", {}).get("step", 1))
+            logger.info("Market info: min_qty=%s | step_size=%s", min_qty, step_size)
+        except Exception as e:
+            logger.warning("No se pudo obtener market info para %s: %s", symbol, e)
+            min_qty = 0
+            step_size = 1
+
+        # --- Verificar que quantity cumpla mínimo ---
+        if quantity < min_qty:
+            logger.warning("Cantidad %s menor al mínimo %s para %s. Orden ignorada.", quantity, min_qty, symbol)
+            return None, None, None
+
+        # Redondear quantity al step_size
+        if step_size > 0:
+            quantity = (quantity // step_size) * step_size
+            logger.info("Cantidad ajustada a step_size: %s", quantity)
+
         if self.dry_run:
             oid = f"sim-bracket-{int(time.time()*1000)}"
             logger.info("DRY_RUN bracket simulated: %s %s %f entry=%f stop=%f tp=%f (%s)",
@@ -130,40 +156,47 @@ class BinanceClient:
                     {"id": f"{oid}-stop", "status": "open"},
                     {"id": f"{oid}-tp", "status": "open"})
 
-        # Entrada LIMIT post-only
-        params_entry = {"timeInForce": "GTX"}
-        logger.info("Placing LIMIT post-only entry %s %s qty=%s price=%s", symbol, side, quantity, entry_price)
-        entry_order = await self.exchange.create_order(symbol, "LIMIT", side, quantity, entry_price, params_entry)
+        try:
+            # Entrada LIMIT post-only
+            params_entry = {"timeInForce": "GTX"}
+            logger.info("Placing LIMIT post-only entry %s %s qty=%s price=%s", symbol, side, quantity, entry_price)
+            entry_order = await self.exchange.create_order(symbol, "LIMIT", side, quantity, entry_price, params_entry)
 
-        # Esperar fill
-        entry_filled = False
-        start = time.time()
-        entry_id = entry_order.get("id")
-        while time.time() - start < wait_timeout:
-            ordinfo = await self.fetch_order(entry_id, symbol)
-            if ordinfo and ordinfo.get("status") in ("closed", "filled"):
-                entry_filled = True
-                logger.info("Entry filled for %s: %s", symbol, ordinfo)
-                break
-            await asyncio.sleep(0.5)
+            # Esperar fill
+            entry_filled = False
+            start = time.time()
+            entry_id = entry_order.get("id")
+            while time.time() - start < wait_timeout:
+                ordinfo = await self.fetch_order(entry_id, symbol)
+                if ordinfo and ordinfo.get("status") in ("closed", "filled"):
+                    entry_filled = True
+                    logger.info("Entry filled for %s: %s", symbol, ordinfo)
+                    break
+                await asyncio.sleep(0.5)
 
-        if not entry_filled:
-            await self.cancel_order(entry_id, symbol)
-            raise RuntimeError(f"Entry not filled in {wait_timeout}s for {symbol}")
+            if not entry_filled:
+                await self.cancel_order(entry_id, symbol)
+                logger.error("Entry not filled in %ss for %s", wait_timeout, symbol)
+                return None, None, None
 
-        # Stop Market (cerrar posición)
-        stop_side = "SELL" if side.upper() == "BUY" else "BUY"
-        params_stop = {"stopPrice": stop_price}
-        stop_order = await self.exchange.create_order(symbol, "STOP_MARKET", stop_side, quantity, None, params_stop)
-        logger.info("STOP_MARKET placed: %s", stop_order)
+            # Stop Market (cerrar posición)
+            stop_side = "SELL" if side.upper() == "BUY" else "BUY"
+            params_stop = {"stopPrice": stop_price}
+            stop_order = await self.exchange.create_order(symbol, "STOP_MARKET", stop_side, quantity, None, params_stop)
+            logger.info("STOP_MARKET placed: %s", stop_order)
 
-        # Take Profit como LIMIT post-only (Maker)
-        tp_side = "SELL" if side.upper() == "BUY" else "BUY"
-        params_tp = {"timeInForce": "GTX"}
-        tp_order = await self.exchange.create_order(symbol, "LIMIT", tp_side, quantity, take_profit_price, params_tp)
-        logger.info("Take Profit LIMIT placed: %s", tp_order)
+            # Take Profit como LIMIT post-only (Maker)
+            tp_side = "SELL" if side.upper() == "BUY" else "BUY"
+            params_tp = {"timeInForce": "GTX"}
+            tp_order = await self.exchange.create_order(symbol, "LIMIT", tp_side, quantity, take_profit_price, params_tp)
+            logger.info("Take Profit LIMIT placed: %s", tp_order)
 
-        return entry_order, stop_order, tp_order
+            logger.info("=== CREATE_BRACKET_ORDER END ===")
+            return entry_order, stop_order, tp_order
+
+        except Exception as e:
+            logger.exception("Error creando bracket order para %s: %s", symbol, e)
+            return None, None, None
 
     async def create_oco_order(self, *args, **kwargs):
         logger.warning("create_oco_order is deprecated. Using create_bracket_order instead.")
