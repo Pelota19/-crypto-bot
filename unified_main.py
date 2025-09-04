@@ -74,7 +74,7 @@ class CryptoBot:
                     continue
 
                 equity = await self._get_usable_equity()
-                top_candidates = await self.pair_selector.select_top_symbols(
+                top_candidates = await self.pair_selector.select_top_symbols_async(
                     self.pairs, POSITION_SIZE_PERCENT
                 )
 
