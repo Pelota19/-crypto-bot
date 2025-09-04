@@ -10,8 +10,14 @@ class PairSelector:
     Selecciona los mejores símbolos basados en criterios de análisis técnico.
     """
 
-    def __init__(self):
-        pass
+    def __init__(self, exchange=None, position_size_percent: float = 1.0):
+        """
+        Inicializa el selector de pares.
+        - exchange: cliente de exchange (para traer datos si es necesario)
+        - position_size_percent: tamaño de posición relativo (% del capital)
+        """
+        self.exchange = exchange
+        self.position_size_percent = position_size_percent
 
     def analyze_symbol(self, symbol: str, ohlcv: List[List[Any]]) -> Dict[str, Any]:
         """
@@ -54,18 +60,13 @@ class PairSelector:
 
         for sym in pairs:
             try:
-                # En esta versión se asume que el análisis ya fue hecho en otro lado
-                # o será extendido aquí.
-                # Placeholder: momentum positivo simulado
+                # Placeholder: score fijo
                 metric = {"symbol": sym, "score": 1.0}
                 candidates.append((sym, metric))
             except Exception as e:
                 logger.warning("Error procesando símbolo %s: %s", sym, e)
 
-        # Ordenar por score descendente (aquí fijo porque es placeholder)
+        # Ordenar por score descendente
         candidates = sorted(candidates, key=lambda x: x[1].get("score", 0), reverse=True)
 
-        # Limitar cantidad de símbolos
-        selected = candidates[:max_symbols]
-
-        return selected
+        return candidates[:max_symbols]
