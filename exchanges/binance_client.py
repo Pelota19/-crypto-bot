@@ -1,10 +1,9 @@
 """
-src/exchange/binance_client.py
-
 Async wrapper for Binance Futures via ccxt.async_support.
 Soporta sandbox/testnet y DRY_RUN.
 Provee create_bracket_order para emular OCO en Futures:
 entrada LIMIT post-only, espera fill, luego STOP_MARKET + TAKE_PROFIT_LIMIT.
+Aplica apalancamiento según configuración.
 """
 import time
 import logging
@@ -12,7 +11,7 @@ from typing import Optional, List, Dict, Tuple
 import asyncio
 import ccxt.async_support as ccxt
 
-from config.settings import API_KEY, API_SECRET, USE_TESTNET, DRY_RUN
+from config.settings import API_KEY, API_SECRET, USE_TESTNET, DRY_RUN, LEVERAGE, MARGIN_MODE
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +38,22 @@ class BinanceClient:
                 logger.info("Binance sandbox mode enabled")
             except Exception:
                 logger.warning("Sandbox/testnet mode no disponible en esta build de ccxt")
+
+    async def set_leverage(self, symbol: str):
+        if self.dry_run:
+            return
+        try:
+            await self.exchange.fapiPrivate_post_leverage({
+                "symbol": symbol.replace("/", ""),
+                "leverage": int(LEVERAGE)
+            })
+            await self.exchange.fapiPrivate_post_marginType({
+                "symbol": symbol.replace("/", ""),
+                "marginType": MARGIN_MODE
+            })
+            logger.info("Leverage %dx y margin mode %s aplicado a %s", LEVERAGE, MARGIN_MODE, symbol)
+        except Exception as e:
+            logger.exception("No se pudo aplicar leverage/margin para %s: %s", symbol, e)
 
     # ---------- Market Data ----------
     async def fetch_ohlcv(self, symbol: str, timeframe: str = "1m", limit: int = 200) -> List:
@@ -122,7 +137,10 @@ class BinanceClient:
         Entrada LIMIT post-only, espera fill, luego SL + TP.
         TP siempre como LIMIT para comisiones de Maker.
         Logging extendido y validación mínima de qty.
+        Aplica leverage automáticamente.
         """
+        await self.set_leverage(symbol)
+
         logger.info("=== CREATE_BRACKET_ORDER START ===")
         logger.info("Symbol: %s | Side: %s | Qty: %s | Entry: %s | Stop: %s | TP: %s",
                     symbol, side, quantity, entry_price, stop_price, take_profit_price)
@@ -137,6 +155,10 @@ class BinanceClient:
             logger.warning("No se pudo obtener market info para %s: %s", symbol, e)
             min_qty = 0
             step_size = 1
+
+        # --- Ajustar quantity con leverage ---
+        quantity = quantity * LEVERAGE
+        logger.info("Cantidad ajustada con leverage %dx: %s", LEVERAGE, quantity)
 
         # --- Verificar que quantity cumpla mínimo ---
         if quantity < min_qty:
@@ -159,7 +181,6 @@ class BinanceClient:
         try:
             # Entrada LIMIT post-only
             params_entry = {"timeInForce": "GTX"}
-            logger.info("Placing LIMIT post-only entry %s %s qty=%s price=%s", symbol, side, quantity, entry_price)
             entry_order = await self.exchange.create_order(symbol, "LIMIT", side, quantity, entry_price, params_entry)
 
             # Esperar fill
@@ -170,26 +191,22 @@ class BinanceClient:
                 ordinfo = await self.fetch_order(entry_id, symbol)
                 if ordinfo and ordinfo.get("status") in ("closed", "filled"):
                     entry_filled = True
-                    logger.info("Entry filled for %s: %s", symbol, ordinfo)
                     break
                 await asyncio.sleep(0.5)
 
             if not entry_filled:
                 await self.cancel_order(entry_id, symbol)
-                logger.error("Entry not filled in %ss for %s", wait_timeout, symbol)
                 return None, None, None
 
-            # Stop Market (cerrar posición)
+            # Stop Market
             stop_side = "SELL" if side.upper() == "BUY" else "BUY"
             params_stop = {"stopPrice": stop_price}
             stop_order = await self.exchange.create_order(symbol, "STOP_MARKET", stop_side, quantity, None, params_stop)
-            logger.info("STOP_MARKET placed: %s", stop_order)
 
-            # Take Profit como LIMIT post-only (Maker)
+            # Take Profit LIMIT
             tp_side = "SELL" if side.upper() == "BUY" else "BUY"
             params_tp = {"timeInForce": "GTX"}
             tp_order = await self.exchange.create_order(symbol, "LIMIT", tp_side, quantity, take_profit_price, params_tp)
-            logger.info("Take Profit LIMIT placed: %s", tp_order)
 
             logger.info("=== CREATE_BRACKET_ORDER END ===")
             return entry_order, stop_order, tp_order
