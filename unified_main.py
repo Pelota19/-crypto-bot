@@ -113,7 +113,8 @@ class CryptoBot:
             await self.safe_send_telegram(f"❌ Error analizando {sym}: {e}")
             return None
         return None
-        async def ejecutar_trade(self, sym: str, signal: str):
+
+    async def ejecutar_trade(self, sym: str, signal: str):
         if sym in self.state.open_positions:
             return
         size_usdt = CAPITAL_TOTAL * POSITION_SIZE_PERCENT
@@ -136,12 +137,14 @@ class CryptoBot:
         notional = price * quantity
         if notional > MAX_TRADE_USDT:
             quantity = MAX_TRADE_USDT / price
+            notional = MAX_TRADE_USDT
         if notional < min_notional:
             if sym != "SOL/USDT":
                 await self.safe_send_telegram(f"⚠️ Orden ignorada {sym}: Notional {notional:.2f} < min {min_notional}")
                 return
             else:
                 quantity = min_notional / price
+                notional = min_notional
 
         # Aplicar leverage
         quantity *= LEVERAGE
@@ -170,7 +173,8 @@ class CryptoBot:
                 wait_timeout=30
             )
             if entry_order:
-                self.state.register_open_position(sym, signal, entry, quantity/LEVERAGE*price, sl, tp)
+                # Registra la posición usando el notional sin apalancamiento si tu StateManager espera USDT invertidos
+                self.state.register_open_position(sym, signal, entry, (quantity / LEVERAGE) * price, sl, tp)
                 await self.safe_send_telegram(
                     f"✅ {sym} {signal.upper()} abierto @ {entry:.2f} USDT\nSL {sl:.2f} | TP {tp:.2f} | Qty {quantity:.6f}"
                 )
