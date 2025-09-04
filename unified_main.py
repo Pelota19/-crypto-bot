@@ -1,31 +1,45 @@
 """
-Unified CryptoBot
-Testnet real con Binance Futures (USDT-M)
+Bot principal unificado para Crypto Scalping
+Conexión directa a Binance Futures TESTNET (USDT-M)
 """
+
 import asyncio
 import logging
-from src.config import API_KEY, API_SECRET, USE_TESTNET, POSITION_SIZE_PERCENT
-from src.config import MAX_OPEN_TRADES, CAPITAL_MAX_USDT, TRADING_PAIRS
+import pandas as pd
+
+from src.config import (
+    API_KEY, API_SECRET, USE_TESTNET, DRY_RUN,
+    POSITION_SIZE_PERCENT, MAX_OPEN_TRADES,
+    DAILY_PROFIT_TARGET, CAPITAL_MAX_USDT, TRADING_PAIRS
+)
 from src.exchange.binance_client import BinanceClient
 from src.executor import Executor
 from src.strategy.strategy import build_features
 from src.state import bot_state
-from src.pair_selector import PairSelector
-from src.telegram.console import TelegramConsole
 from src.risk.manager import RiskManager, cap_equity
+from src.pair_selector import PairSelector
+from src.persistence.sqlite_store import save_balance
+from src.telegram.console import TelegramConsole
 
 logger = logging.getLogger(__name__)
+
 
 class CryptoBot:
     def __init__(self):
         logging.basicConfig(level=logging.INFO)
         self.logger = logger
-        self.exchange = BinanceClient(API_KEY, API_SECRET, use_testnet=USE_TESTNET)
+
+        self.exchange = BinanceClient(
+            api_key=API_KEY,
+            api_secret=API_SECRET,
+            use_testnet=USE_TESTNET,
+            dry_run=DRY_RUN,
+        )
         self.risk_manager = RiskManager()
-        self.executor = Executor(self.exchange, self.risk_manager, dry_run=False)
+        self.executor = Executor(self.exchange, self.risk_manager, dry_run=DRY_RUN)
         self._stop_event = asyncio.Event()
         self.pair_selector = PairSelector(self.exchange)
-        self.telegram = TelegramConsole(order_manager=None)
+        self.telegram = TelegramConsole(order_manager=None)  # conectar luego con executor
         self.pairs = TRADING_PAIRS
 
     async def start(self):
@@ -41,10 +55,10 @@ class CryptoBot:
         await self.telegram.send_message("⛔ CryptoBot stopped")
 
     async def _get_usable_equity(self) -> float:
+        """Get usable equity (capped by CAPITAL_MAX_USDT)."""
         try:
-            bal = await self.exchange.fetch_balance()
-            usdt = float(bal.get("USDT", {}).get("free", CAPITAL_MAX_USDT))
-            usable = cap_equity(usdt)
+            bal = await self.exchange.get_balance_usdt()
+            usable = cap_equity(bal)
             return min(usable, CAPITAL_MAX_USDT)
         except Exception:
             self.logger.exception("Error fetching balance, defaulting to CAPITAL_MAX_USDT")
@@ -60,12 +74,11 @@ class CryptoBot:
                     continue
 
                 equity = await self._get_usable_equity()
-                top_candidates = await self.pair_selector.select_top_symbols_async(
+                top_candidates = await self.pair_selector.select_top_symbols(
                     self.pairs, POSITION_SIZE_PERCENT
                 )
 
-                for candidate in top_candidates:
-                    sym, metrics = candidate
+                for sym, score in top_candidates:
                     if len(bot_state.open_positions) >= MAX_OPEN_TRADES:
                         break
 
@@ -73,7 +86,6 @@ class CryptoBot:
                     if not raw:
                         continue
 
-                    import pandas as pd
                     df = pd.DataFrame(raw, columns=["timestamp", "open", "high", "low", "close", "volume"])
                     df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
 
@@ -92,12 +104,13 @@ class CryptoBot:
                         size_usd = equity * POSITION_SIZE_PERCENT
                         current_price = float(df["close"].iloc[-1])
                         await self.executor.open_position(sym, side, size_usd, current_price)
-                        await self.telegram.send_message(f"{sym} {side.upper()} opened @ {current_price:.2f}")
+                        await self.telegram.send_message(
+                            f"✅ {sym} {side.upper()} opened @ {current_price:.2f}"
+                        )
 
                     await asyncio.sleep(0.5)
 
                 await asyncio.sleep(1)
-
         except asyncio.CancelledError:
             self.logger.info("Trading loop cancelled")
         except Exception:
@@ -108,8 +121,13 @@ class CryptoBot:
 
 async def main():
     bot = CryptoBot()
-    await bot.start()
-    await bot.run_trading_loop()
+    try:
+        await bot.start()
+        await bot.run_trading_loop()
+    except Exception as e:
+        logger.exception("Error iniciando el bot: %s", e)
+        await bot.stop()
+
 
 if __name__ == "__main__":
     asyncio.run(main())
