@@ -1,10 +1,10 @@
-# (reemplaza por completo tu binance_client.py existente con este contenido)
 """
 Robust async wrapper around ccxt.async_support.binance (USDT-M Futures).
 
 Incluye:
 - autoinyección de positionSide cuando hedge_mode=True
 - fallback automático para tipos de órdenes SL/TP no válidos en Binance Futures
+  y eliminación de parámetros incompatibles (ej. reduceOnly) en el retry
 - cancel_order wrapper
 """
 import logging
@@ -211,12 +211,20 @@ class BinanceClient:
                 requested = (type or "").lower()
                 if requested in fallback_map:
                     new_type = fallback_map[requested]
-                    logger.warning("Order type %s rejected by exchange for %s -> retrying with %s", type, symbol, new_type)
+                    # Prepare params for retry: remove keys that commonly break the request for market-type SL/TP
+                    params_retry = dict(params or {})
+                    # remove reduceOnly variants that Binance may reject for these order types
+                    for k in ("reduceOnly", "reduce_only", "reduceonly"):
+                        if k in params_retry:
+                            params_retry.pop(k, None)
+                    # keep other params like stopPrice/timeInForce where appropriate, but if still problematic we will see the error and log it
+                    logger.warning("Order type %s rejected by exchange for %s -> retrying with %s (sanitized params)", type, symbol, new_type)
                     try:
-                        return await self.exchange.create_order(symbol, new_type, side, amount, price, params or {})
+                        return await self.exchange.create_order(symbol, new_type, side, amount, price, params_retry or {})
                     except Exception as exc2:
                         logger.exception("Retry with %s also failed for %s: %s", new_type, symbol, exc2)
                         raise
+                # no fallback available or fallback not applicable
                 raise
 
         except Exception as e:
