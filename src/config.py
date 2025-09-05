@@ -23,6 +23,11 @@ RISK_REWARD_RATIO = float(os.getenv("RISK_REWARD_RATIO", "1.5"))
 LEVERAGE = int(os.getenv("LEVERAGE", "5"))
 MARGIN_MODE = os.getenv("MARGIN_MODE", "ISOLATED")
 
+# --- Hedge / One-way mode (binance futures) ---
+# Si HEDGE_MODE=True asumimos DUAL (Hedge mode) y el bot enviará positionSide en las órdenes.
+# Si HEDGE_MODE=False asumimos One-way (BOTH) y el bot NO inyectará positionSide.
+HEDGE_MODE = os.getenv("HEDGE_MODE", "True").lower() in ("true", "1", "yes")
+
 # --- Universo y ciclo ---
 TIMEFRAME = os.getenv("TIMEFRAME", "1m")
 MAX_ACTIVE_SYMBOLS = int(os.getenv("MAX_ACTIVE_SYMBOLS", "5"))
