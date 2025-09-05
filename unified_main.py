@@ -9,6 +9,7 @@ import asyncio
 import logging
 import pandas as pd
 from datetime import datetime, timedelta, timezone
+from typing import List
 
 from config import (
     API_KEY, API_SECRET, USE_TESTNET, POSITION_SIZE_PERCENT, MAX_OPEN_TRADES, DAILY_PROFIT_TARGET,
@@ -49,23 +50,58 @@ class CryptoBot:
         self.state = StateManager(daily_profit_target=OBJETIVO_PROFIT_DIARIO)
         self._stop_event = asyncio.Event()
         self.last_loop_heartbeat = datetime.now(timezone.utc)
+        # Telegram failure protection
+        self._telegram_fail_count = 0
+        self._telegram_fail_threshold = 5
+        self._recent_telegram_disabled = False
 
     async def safe_send_telegram(self, msg: str):
-        """Envía mensaje a Telegram, corta si demasiado largo"""
+        """Envía mensaje a Telegram, corta si demasiado largo.
+        Añade protección contra fallos repetidos (400) para evitar spam de errores."""
         try:
+            if getattr(self, "_recent_telegram_disabled", False):
+                logger.warning("Telegram disabled due to repeated failures; skipping message")
+                return
             if len(msg) > TELEGRAM_MSG_MAX:
                 for i in range(0, len(msg), TELEGRAM_MSG_MAX):
                     await self.telegram.send_message(msg[i:i+TELEGRAM_MSG_MAX])
             else:
                 await self.telegram.send_message(msg)
+            # envío exitoso -> reset contador
+            self._telegram_fail_count = 0
         except Exception as e:
+            # registrar excepción completa en logs para diagnóstico
             logger.warning("Telegram message failed: %s", e)
+            self._telegram_fail_count = getattr(self, "_telegram_fail_count", 0) + 1
+            if self._telegram_fail_count >= getattr(self, "_telegram_fail_threshold", 5):
+                logger.error(
+                    "Telegram failing %d times consecutivas, desactivando envíos temporalmente",
+                    self._telegram_fail_count
+                )
+                self._recent_telegram_disabled = True
+            # no relanzamos la excepción para no romper loops
 
     async def actualizar_watchlist(self):
+        """Construye watchlist solo con símbolos USDT contract y en estado TRADING/active.
+        Usa fetch_markets para validar metadatos en lugar de asumir todos los símbolos válidos."""
         try:
-            all_symbols = await self.exchange.fetch_all_symbols()
+            markets = await self.exchange.fetch_markets()
+            candidates: List[str] = []
+            for m in markets:
+                try:
+                    symbol = m.get("symbol")
+                    quote = m.get("quote") or m.get("info", {}).get("quoteAsset")
+                    active = m.get("active", True)
+                    is_contract = m.get("contract") or (m.get("type") == "future") or ("contractType" in m.get("info", {}))
+                    status = m.get("info", {}).get("status", "").upper()
+                    if not symbol or quote != "USDT" or not active or not is_contract or (status and status != "TRADING"):
+                        continue
+                    candidates.append(symbol)
+                except Exception:
+                    continue
+
             filtered = []
-            for sym in all_symbols:
+            for sym in candidates:
                 try:
                     ticker = await self.exchange.fetch_ticker(sym)
                     if not ticker:
@@ -83,8 +119,13 @@ class CryptoBot:
                     if vol < 50_000_000 or price <= 0 or atr_rel < 0.005:
                         continue
                     filtered.append((sym, vol))
-                except Exception:
+                except Exception as e:
+                    msg = str(e)
+                    if "Invalid symbol status" in msg or "Invalid symbol" in msg:
+                        logger.info("Symbol %s tiene estado inválido, se ignorará: %s", sym, msg)
+                        continue
                     continue
+
             filtered.sort(key=lambda x: x[1], reverse=True)
             global WATCHLIST_DINAMICA
             WATCHLIST_DINAMICA = [x[0] for x in filtered[:MAX_ACTIVE_SYMBOLS]]
@@ -110,6 +151,16 @@ class CryptoBot:
             if price < ema50_15m and ema9 < ema21 and rsi14 > 35:
                 return "short"
         except Exception as e:
+            msg = str(e)
+            if "Invalid symbol status" in msg or "Invalid symbol" in msg:
+                try:
+                    if sym in WATCHLIST_DINAMICA:
+                        WATCHLIST_DINAMICA.remove(sym)
+                        logger.info("Removed %s from watchlist due to invalid status", sym)
+                        await self.safe_send_telegram(f"⚠️ {sym} removido de watchlist: estado inválido en exchange")
+                except Exception:
+                    logger.debug("Error removiendo símbolo problemático %s", sym)
+                return None
             await self.safe_send_telegram(f"❌ Error analizando {sym}: {e}")
             return None
         return None
@@ -173,7 +224,6 @@ class CryptoBot:
                 wait_timeout=30
             )
             if entry_order:
-                # Registra la posición usando el notional sin apalancamiento si tu StateManager espera USDT invertidos
                 self.state.register_open_position(sym, signal, entry, (quantity / LEVERAGE) * price, sl, tp)
                 await self.safe_send_telegram(
                     f"✅ {sym} {signal.upper()} abierto @ {entry:.2f} USDT\nSL {sl:.2f} | TP {tp:.2f} | Qty {quantity:.6f}"
