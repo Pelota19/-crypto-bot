@@ -147,14 +147,10 @@ class TelegramNotifier:
                                 retry_after = int(msg.split(":", 1)[1])
                             except Exception:
                                 retry_after = 5
-                            # wait retry_after seconds and then try again (do not pop the message from queue)
                             logger.warning("Sleeping %s seconds due to Telegram 429", retry_after)
-                            # Respect the retry-after but also apply a little jitter
                             await asyncio.sleep(retry_after + 0.5)
-                            # on waking, retry sending the same message
                             continue
                         else:
-                            # unknown runtime error: break and treat as failure
                             logger.exception("Runtime error sending telegram: %s", rte)
                             self._consecutive_failures += 1
                             if self._consecutive_failures >= self._max_consecutive_failures:
