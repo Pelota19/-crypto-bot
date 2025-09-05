@@ -9,13 +9,16 @@ Cambios / mejoras aplicadas:
 - Añade parámetro verbose para debugging de CCXT (muestra request/response).
 - Añade parámetro hedge_mode (True por defecto). Si hedge_mode=True y la orden es FUTURES, el cliente
   autoinyectará positionSide ('LONG' para BUY, 'SHORT' para SELL) cuando no esté explícito en params.
+- Añade fallback automático para tipos de órdenes SL/TP no válidos en Binance Futures:
+  si pides 'stop_limit' o 'take_profit_limit' y Binance rechaza, reintentamos con
+  'stop_market' y 'take_profit_market' respectivamente.
 """
 import logging
 from typing import Optional, Any, List
 import os
 
 import ccxt.async_support as ccxt
-from ccxt.base.errors import BadRequest, ExchangeError, NetworkError, RequestTimeout
+from ccxt.base.errors import BadRequest, ExchangeError, NetworkError, RequestTimeout, InvalidOrder
 
 logger = logging.getLogger(__name__)
 
@@ -43,8 +46,6 @@ class BinanceClient:
         api_secret = (api_secret or os.getenv("BINANCE_SECRET") or "").strip()
 
         if not api_key or not api_secret:
-            # No se lanza excepción aquí de forma obligatoria para permitir operaciones "read-only" si así se desea,
-            # pero se registra la condición. Algunos métodos (privados) fallarán si faltan credenciales.
             logger.warning("BinanceClient: api_key or api_secret empty. Private endpoints will fail if called.")
 
         self.api_key = api_key
@@ -66,9 +67,7 @@ class BinanceClient:
             "secret": self.api_secret,
             "enableRateLimit": True,
             "options": {
-                # Usamos 'future' por defecto (USDT-M)
                 "defaultType": "future",
-                # Evita warnings y sincroniza la diferencia de tiempo
                 "warnOnFetchOHLCVLimitArgument": False,
                 "adjustForTimeDifference": True,
             },
@@ -76,7 +75,6 @@ class BinanceClient:
 
         if self.use_testnet:
             logger.info("Binance sandbox/testnet mode enabled (USDT-M futures). Using testnet endpoints.")
-            # Establecemos la base URL de testnet (sin el sufijo /fapi/v1) para que ccxt construya las rutas correctamente.
             params["urls"] = {
                 "api": {
                     "public": "https://testnet.binancefuture.com",
@@ -84,24 +82,18 @@ class BinanceClient:
                 }
             }
 
-        # Crear instancia ccxt
         self.exchange = ccxt.binance(params)
 
-        # Habilitar verbose si se solicitó (útil solo para debugging local)
         if self.verbose:
             try:
                 self.exchange.verbose = True
             except Exception:
-                # No crítico si falla
                 pass
 
-        # Intentar set_sandbox_mode si está disponible (no siempre necesario si override urls)
         try:
             if hasattr(self.exchange, "set_sandbox_mode"):
-                # Pasa True/False según use_testnet
                 self.exchange.set_sandbox_mode(self.use_testnet)
         except Exception:
-            # No crítico si falla
             pass
 
         try:
@@ -114,7 +106,6 @@ class BinanceClient:
     async def _fetch_all_usdt_perpetual_symbols_via_raw(self) -> List[str]:
         await self._ensure_exchange()
         try:
-            # Usamos el endpoint fapiPublicGetExchangeInfo para obtener todos los símbolos perpetual
             info = await self.exchange.fapiPublicGetExchangeInfo()
             out: List[str] = []
             for s in info.get("symbols", []):
@@ -174,12 +165,10 @@ class BinanceClient:
             if not ohlcv:
                 logger.debug("fetch_ohlcv returned empty for %s %s", symbol, timeframe)
                 return None
-            # Asegurar conversion a floats (compatibilidad con el resto del código)
             for i in range(len(ohlcv)):
                 try:
                     ohlcv[i] = [float(x) for x in ohlcv[i]]
                 except Exception:
-                    # Si falla la conversión, se deja el valor original para evitar romper el flujo
                     pass
             return ohlcv
         except (BadRequest, NetworkError, RequestTimeout, ExchangeError) as e:
@@ -190,9 +179,6 @@ class BinanceClient:
             return None
 
     async def fetch_24h_change(self, symbol: str) -> Optional[float]:
-        """
-        Retorna el cambio % absoluto de las últimas 24h para filtrar ±PCT_CHANGE_24H
-        """
         ticker = await self.fetch_ticker(symbol)
         if ticker and "percentage" in ticker:
             try:
@@ -237,7 +223,6 @@ class BinanceClient:
             except Exception:
                 market_type = None
 
-            # Fallback: usar defaultType en options si no pudimos obtener markets
             if not market_type:
                 try:
                     market_type = getattr(self.exchange, "options", {}).get("defaultType")
@@ -249,9 +234,33 @@ class BinanceClient:
                 params["positionSide"] = "LONG" if side.upper() == "BUY" else "SHORT"
                 logger.debug("Auto-injected positionSide=%s for %s %s", params["positionSide"], side, symbol)
 
-            return await self.exchange.create_order(symbol, type, side, amount, price, params or {})
+            # Primary attempt
+            try:
+                return await self.exchange.create_order(symbol, type, side, amount, price, params or {})
+            except InvalidOrder as exc:
+                # si Binance rechaza el tipo de orden, intentar fallback para SL/TP en futures
+                msg = str(exc)
+                logger.debug("create_order InvalidOrder: %s", msg)
+                fallback_map = {
+                    "stop_limit": "stop_market",
+                    "take_profit_limit": "take_profit_market",
+                    # otros mapeos posibles:
+                    "stop_loss_limit": "stop_market",
+                    "take_profit": "take_profit_market",
+                }
+                requested = (type or "").lower()
+                if requested in fallback_map:
+                    new_type = fallback_map[requested]
+                    logger.warning("Order type %s rejected by exchange for %s -> retrying with %s", type, symbol, new_type)
+                    try:
+                        return await self.exchange.create_order(symbol, new_type, side, amount, price, params or {})
+                    except Exception as exc2:
+                        logger.exception("Retry with %s also failed for %s: %s", new_type, symbol, exc2)
+                        raise
+                # si no hay fallback o el fallback falló, re-lanzar
+                raise
+
         except Exception as e:
-            # Añadimos contexto y tratamos de exponer last_http_response para debug
             logger.exception("create_order failed for %s %s %s %s: %s", symbol, type, side, amount, e)
             try:
                 logger.debug("Last http response: %s", getattr(self.exchange, 'last_http_response', None))
