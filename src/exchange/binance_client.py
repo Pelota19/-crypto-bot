@@ -6,15 +6,14 @@ Cambios / mejoras aplicadas:
 - Añade opción use_testnet para forzar los endpoints de testnet.binancefuture.com.
 - Activa options['adjustForTimeDifference'] para sincronizar timestamps con el servidor.
 - Mantiene compatibilidad con el resto del código (métodos: fetch_all_symbols, fetch_ohlcv, create_order, etc.).
-- Añade método para configurar Hedge Mode (dualSidePosition) automáticamente.
-- *** CORRECCIÓN: Busca BINANCE_API_SECRET en lugar de BINANCE_SECRET. ***
+- Añade parámetro verbose para debugging de CCXT (muestra request/response).
 """
 import logging
 from typing import Optional, Any, List
 import os
 
 import ccxt.async_support as ccxt
-from ccxt.base.errors import BadRequest, ExchangeError, NetworkError, RequestTimeout, AuthenticationError
+from ccxt.base.errors import BadRequest, ExchangeError, NetworkError, RequestTimeout
 
 logger = logging.getLogger(__name__)
 
@@ -30,17 +29,18 @@ class BinanceClient:
     ):
         """
         Constructor:
-        - api_key/api_secret: si no se pasan, se leen de env BINANCE_API_KEY / BINANCE_API_SECRET
+        - api_key/api_secret: si no se pasan, se leen de env BINANCE_API_KEY / BINANCE_SECRET
         - use_testnet: apunta a testnet.binancefuture.com para USDT-M futures
         - dry_run: no crea órdenes reales, devuelve objeto simulado
         - verbose: activa exchange.verbose para debug (no compartir signatures)
         """
         # Leer y recortar credenciales (evita saltos de línea o espacios accidentales)
         api_key = (api_key or os.getenv("BINANCE_API_KEY") or "").strip()
-        # --- LÍNEA CORREGIDA ---
-        api_secret = (api_secret or os.getenv("BINANCE_API_SECRET") or "").strip()
+        api_secret = (api_secret or os.getenv("BINANCE_SECRET") or "").strip()
 
         if not api_key or not api_secret:
+            # No se lanza excepción aquí de forma obligatoria para permitir operaciones "read-only" si así se desea,
+            # pero se registra la condición. Algunos métodos (privados) fallarán si faltan credenciales.
             logger.warning("BinanceClient: api_key or api_secret empty. Private endpoints will fail if called.")
 
         self.api_key = api_key
@@ -61,7 +61,9 @@ class BinanceClient:
             "secret": self.api_secret,
             "enableRateLimit": True,
             "options": {
+                # Usamos 'future' por defecto (USDT-M)
                 "defaultType": "future",
+                # Evita warnings y sincroniza la diferencia de tiempo
                 "warnOnFetchOHLCVLimitArgument": False,
                 "adjustForTimeDifference": True,
             },
@@ -69,70 +71,62 @@ class BinanceClient:
 
         if self.use_testnet:
             logger.info("Binance sandbox/testnet mode enabled (USDT-M futures). Using testnet endpoints.")
+            # Establecemos la base URL de testnet (sin el sufijo /fapi/v1) para que ccxt construya las rutas correctamente.
             params["urls"] = {
                 "api": {
                     "public": "https://testnet.binancefuture.com",
                     "private": "https://testnet.binancefuture.com",
                 }
             }
+
+        # Crear instancia ccxt
         self.exchange = ccxt.binance(params)
+
+        # Habilitar verbose si se solicitó (útil solo para debugging local)
         if self.verbose:
-            self.exchange.verbose = True
+            try:
+                self.exchange.verbose = True
+            except Exception:
+                # No crítico si falla
+                pass
+
+        # Intentar set_sandbox_mode si está disponible (no siempre necesario si override urls)
+        try:
+            if hasattr(self.exchange, "set_sandbox_mode"):
+                # Pasa True/False según use_testnet
+                self.exchange.set_sandbox_mode(self.use_testnet)
+        except Exception:
+            # No crítico si falla
+            pass
+
         try:
             await self.exchange.load_markets()
-        except AuthenticationError as e:
-            logger.critical("Authentication failed while loading markets: %s. Check your API keys.", e)
-            raise
         except Exception as e:
             logger.warning("Warning loading markets for BinanceClient: %s", e)
+
         self._initialized = True
-
-    async def set_hedge_mode(self, enable: bool = True) -> bool:
-        await self._ensure_exchange()
-        mode_str = "true" if enable else "false"
-        mode_name = "Hedge Mode" if enable else "One-way Mode"
-        
-        if self.dry_run:
-            logger.info(f"DRY RUN: Would set position mode to {mode_name} ({mode_str}).")
-            return True
-
-        try:
-            current_mode = await self.exchange.fapiPrivateGetPositionSideDual()
-            if current_mode.get('dualSidePosition') == enable:
-                logger.info(f"Position mode is already set to {mode_name}.")
-                return True
-        except Exception as e:
-            logger.warning(f"Could not check current position side mode: {e}. Proceeding with setting it.")
-
-        try:
-            logger.info(f"Setting position mode to {mode_name}...")
-            response = await self.exchange.fapiPrivatePostPositionSideDual({'dualSidePosition': mode_str})
-            if response and response.get('code') == 200:
-                logger.info(f"Successfully set position mode to {mode_name}.")
-                return True
-            else:
-                logger.error(f"Failed to set position mode to {mode_name}. Response: {response}")
-                return False
-        except AuthenticationError as e:
-            logger.exception(f"AuthenticationError while setting position mode. Check API Key permissions/IP. Error: {e}")
-            raise
-        except Exception as e:
-            logger.exception(f"Exception while setting position mode to {mode_name}: {e}")
-            return False
 
     async def _fetch_all_usdt_perpetual_symbols_via_raw(self) -> List[str]:
         await self._ensure_exchange()
         try:
+            # Usamos el endpoint fapiPublicGetExchangeInfo para obtener todos los símbolos perpetual
             info = await self.exchange.fapiPublicGetExchangeInfo()
             out: List[str] = []
             for s in info.get("symbols", []):
-                if (
-                    s.get("contractType") == "PERPETUAL"
-                    and s.get("quoteAsset") == "USDT"
-                    and s.get("status") == "TRADING"
-                ):
-                    out.append(s.get("symbol").replace("USDT", "/USDT"))
+                try:
+                    if (
+                        s.get("contractType") == "PERPETUAL"
+                        and s.get("quoteAsset") == "USDT"
+                        and s.get("status") == "TRADING"
+                    ):
+                        base = s.get("baseAsset")
+                        quote = s.get("quoteAsset")
+                        if base and quote:
+                            out.append(f"{base}/{quote}")
+                except Exception:
+                    continue
             out = sorted(list(set(out)))
+            logger.info("Símbolos detectados en Binance (USDT-M PERPETUAL): %s", out)
             return out
         except Exception as e:
             logger.warning("No se pudieron obtener símbolos PERPETUAL via fapiPublicGetExchangeInfo: %s", e)
@@ -142,6 +136,7 @@ class BinanceClient:
         syms = await self._fetch_all_usdt_perpetual_symbols_via_raw()
         if syms:
             return syms
+
         try:
             await self._ensure_exchange()
             markets = self.exchange.markets or {}
@@ -172,9 +167,15 @@ class BinanceClient:
         try:
             ohlcv = await self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=since, limit=limit)
             if not ohlcv:
+                logger.debug("fetch_ohlcv returned empty for %s %s", symbol, timeframe)
                 return None
+            # Asegurar conversion a floats (compatibilidad con el resto del código)
             for i in range(len(ohlcv)):
-                ohlcv[i] = [float(x) for x in ohlcv[i]]
+                try:
+                    ohlcv[i] = [float(x) for x in ohlcv[i]]
+                except Exception:
+                    # Si falla la conversión, se deja el valor original para evitar romper el flujo
+                    pass
             return ohlcv
         except (BadRequest, NetworkError, RequestTimeout, ExchangeError) as e:
             logger.warning("fetch_ohlcv failed for %s %s: %s", symbol, timeframe, e)
@@ -184,6 +185,9 @@ class BinanceClient:
             return None
 
     async def fetch_24h_change(self, symbol: str) -> Optional[float]:
+        """
+        Retorna el cambio % absoluto de las últimas 24h para filtrar ±PCT_CHANGE_24H
+        """
         ticker = await self.fetch_ticker(symbol)
         if ticker and "percentage" in ticker:
             try:
@@ -212,13 +216,17 @@ class BinanceClient:
                 "price": price,
                 "amount": amount,
                 "status": "open",
-                "info": {"dry_run": True, **(params or {})}
+                "info": {"dry_run": True}
             }
         try:
             return await self.exchange.create_order(symbol, type, side, amount, price, params or {})
         except Exception as e:
+            # Añadimos contexto y tratamos de exponer last_http_response para debug
             logger.exception("create_order failed for %s %s %s %s: %s", symbol, type, side, amount, e)
-            logger.debug("Last http response: %s", getattr(self.exchange, 'last_http_response', None))
+            try:
+                logger.debug("Last http response: %s", getattr(self.exchange, 'last_http_response', None))
+            except Exception:
+                pass
             raise
 
     async def fetch_open_orders(self, symbol: Optional[str] = None) -> List[dict]:
