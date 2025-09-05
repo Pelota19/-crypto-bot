@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import ccxt.async_support as ccxt
 
@@ -102,6 +102,32 @@ class BinanceClient:
             except Exception:
                 pass
         return None
+
+    async def fetch_markets(self) -> Dict[str, Any]:
+        """
+        Ensure markets are loaded and return the markets dict (ccxt format).
+        """
+        await self._ensure_exchange()
+        # load_markets again to be safe (ccxt caches it but this is cheap when enabled)
+        try:
+            await self.exchange.load_markets(reload=False)
+        except Exception:
+            try:
+                await self.exchange.load_markets()
+            except Exception:
+                pass
+        return getattr(self.exchange, "markets", {})
+
+    async def fetch_all_symbols(self) -> List[str]:
+        """
+        Return a list of available market symbols in CCXT format (e.g. 'BTC/USDT').
+        This method exists because unified_main.py expects it.
+        """
+        markets = await self.fetch_markets()
+        # ccxt uses dict keys as symbol strings
+        if isinstance(markets, dict):
+            return sorted(list(markets.keys()))
+        return []
 
     async def _is_dual_position_mode(self) -> bool:
         if self._dual_position_mode is not None:
