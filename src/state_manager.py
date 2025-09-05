@@ -10,7 +10,7 @@ class StateManager:
 
     def __init__(self, daily_profit_target: float = 50.0):
         # open_positions: symbol -> dict with keys:
-        # { side, entry, quantity, sl, tp, entry_order_id, sl_order_id, tp_order_id, created_at }
+        # { side, entry, quantity, sl, tp, entry_order_id, sl_order_id, tp_order_id, created_at, entry_avg, entry_filled, closed }
         self.open_positions: Dict[str, Dict[str, Any]] = {}
         # closed history list of dicts
         self.closed_positions_history: List[Dict[str, Any]] = []
@@ -43,7 +43,13 @@ class StateManager:
         entry_order_id: Optional[str] = None,
         sl_order_id: Optional[str] = None,
         tp_order_id: Optional[str] = None,
+        entry_avg: Optional[float] = None,
+        entry_filled: Optional[float] = 0.0,
     ):
+        """
+        Registra la posición abierta. entry_avg y entry_filled pueden actualizarse
+        por el monitor cuando la entrada se ejecute (parcial/total).
+        """
         self.open_positions[symbol] = {
             "side": side,
             "entry": float(entry),
@@ -53,9 +59,26 @@ class StateManager:
             "entry_order_id": entry_order_id,
             "sl_order_id": sl_order_id,
             "tp_order_id": tp_order_id,
+            "entry_avg": float(entry_avg) if entry_avg is not None else None,
+            "entry_filled": float(entry_filled or 0.0),
             "created_at": datetime.datetime.utcnow(),
+            "closed": False,
         }
         logger.info(f"📌 Posición abierta en {symbol}: {side} {quantity} @ {entry}, SL {sl}, TP {tp}, orders: entry={entry_order_id} sl={sl_order_id} tp={tp_order_id}")
+
+    def update_entry_execution(self, symbol: str, filled: float, avg: Optional[float]):
+        """
+        Actualiza los datos de ejecución de la entry (parcial/total).
+        """
+        pos = self.open_positions.get(symbol)
+        if not pos:
+            logger.debug("update_entry_execution: posición no encontrada para %s", symbol)
+            return
+        pos["entry_filled"] = float(filled)
+        pos["entry_avg"] = float(avg) if avg is not None else pos.get("entry")
+        pos["quantity"] = float(filled)
+        self.open_positions[symbol] = pos
+        logger.info("Entry execution updated for %s: filled=%s avg=%s", symbol, filled, avg)
 
     def register_closed_position(self, symbol: str, pnl: float, reason: str, close_price: Optional[float] = None, close_order_id: Optional[str] = None):
         pos = self.open_positions.pop(symbol, None)
@@ -77,7 +100,7 @@ class StateManager:
         }
         self.closed_positions_history.append(record)
         self.realized_pnl_today += float(pnl)
-        logger.info(f"✅ Operación cerrada en {symbol} por {reason} con PnL {pnl:.2f} USDT (Total diario: {self.realized_pnl_today:.2f})")
+        logger.info(f"✅  Operación cerrada en {symbol} por {reason} con PnL {pnl:.2f} USDT (Total diario: {self.realized_pnl_today:.2f})")
 
     def get_open_positions(self) -> Dict[str, Dict[str, Any]]:
         return self.open_positions
