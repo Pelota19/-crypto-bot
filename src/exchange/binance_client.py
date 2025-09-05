@@ -6,6 +6,8 @@ Incluye:
 - fallback automático para tipos de órdenes SL/TP no válidos en Binance Futures
   y eliminación de parámetros incompatibles (ej. reduceOnly) en el retry
 - cancel_order wrapper
+- fetch_trades_for_order(order_id, symbol) para obtener trades asociados a un orderId
+  (usa fetch_my_trades y filtra por orderId).
 """
 import logging
 from typing import Optional, Any, List
@@ -217,7 +219,6 @@ class BinanceClient:
                     for k in ("reduceOnly", "reduce_only", "reduceonly"):
                         if k in params_retry:
                             params_retry.pop(k, None)
-                    # keep other params like stopPrice/timeInForce where appropriate, but if still problematic we will see the error and log it
                     logger.warning("Order type %s rejected by exchange for %s -> retrying with %s (sanitized params)", type, symbol, new_type)
                     try:
                         return await self.exchange.create_order(symbol, new_type, side, amount, price, params_retry or {})
@@ -255,6 +256,51 @@ class BinanceClient:
             return await self.exchange.fetch_order(order_id, symbol)
         except Exception:
             return None
+
+    async def fetch_trades_for_order(self, order_id: str, symbol: Optional[str] = None) -> List[dict]:
+        """
+        Intenta obtener los trades (fills) asociados a un orderId.
+        Usa exchange.fetch_my_trades(symbol) y filtra por orderId en trade['info'] o trade.get('order').
+        Retorna lista de trades (puede estar vacía).
+        Nota: fetch_my_trades suele requerir el symbol en Binance.
+        """
+        await self._ensure_exchange()
+        if not order_id:
+            return []
+        try:
+            # Si dry_run, no trades
+            if self.dry_run:
+                return []
+
+            # Preferir pasar symbol cuando esté disponible (reduce rate usage y es requerido por Binance)
+            trades = []
+            try:
+                if symbol:
+                    trades = await self.exchange.fetch_my_trades(symbol)
+                else:
+                    trades = await self.exchange.fetch_my_trades()
+            except Exception as e:
+                # fallback: intentar sin symbol si lo anterior falló
+                logger.debug("fetch_my_trades initial call failed: %s", e)
+                try:
+                    trades = await self.exchange.fetch_my_trades()
+                except Exception as e2:
+                    logger.warning("fetch_my_trades failed: %s", e2)
+                    return []
+
+            # Filtrar trades por order id: buscar en trade.get('order'), trade.get('info',{}).get('orderId') o 'orderId'
+            out = []
+            for t in trades or []:
+                try:
+                    info = t.get("info", {}) or {}
+                    if str(t.get("order") or info.get("orderId") or info.get("orderIdStr") or info.get("orderId", "")) == str(order_id):
+                        out.append(t)
+                except Exception:
+                    continue
+            return out
+        except Exception as e:
+            logger.exception("fetch_trades_for_order failed for %s %s: %s", order_id, symbol, e)
+            return []
 
     async def close(self):
         try:
