@@ -6,9 +6,10 @@ Cambios clave:
 - fetch_all_symbols() usa fapiPublicGetExchangeInfo para traer TODOS los
   símbolos PERPETUAL/USDT en estado TRADING, y los devuelve como 'BASE/USDT'.
 - fetch_ohlcv y fetch_ticker devuelven None si falla.
-- Filtro de ±5% en 24h para señales (para usar en bot full scan).
+- Filtro de ±PCT_CHANGE_24H configurable en .env
 - Manejo de errores y cierre limpio.
 """
+
 import logging
 from typing import Optional, Any, List
 
@@ -72,9 +73,9 @@ class BinanceClient:
             for s in info.get("symbols", []):
                 try:
                     if (
-                        s.get("contractType") == "PERPETUAL" and
-                        s.get("quoteAsset") == "USDT" and
-                        s.get("status") == "TRADING"
+                        s.get("contractType") == "PERPETUAL"
+                        and s.get("quoteAsset") == "USDT"
+                        and s.get("status") == "TRADING"
                     ):
                         base = s.get("baseAsset")
                         quote = s.get("quoteAsset")
@@ -126,7 +127,6 @@ class BinanceClient:
             if not ohlcv:
                 logger.debug("fetch_ohlcv returned empty for %s %s", symbol, timeframe)
                 return None
-            # normalización precios a float
             for i in range(len(ohlcv)):
                 ohlcv[i] = [float(x) for x in ohlcv[i]]
             return ohlcv
@@ -139,7 +139,7 @@ class BinanceClient:
 
     async def fetch_24h_change(self, symbol: str) -> Optional[float]:
         """
-        Retorna el cambio % absoluto de las últimas 24h para filtrar ±5%
+        Retorna el cambio % absoluto de las últimas 24h para filtrar ±PCT_CHANGE_24H
         """
         ticker = await self.fetch_ticker(symbol)
         if ticker and "percentage" in ticker:
