@@ -63,10 +63,19 @@ class BinanceClient:
         self._initialized = True
 
     async def fetch_all_symbols(self) -> List[str]:
+        """
+        Devuelve solo símbolos válidos de Futuros USDT activos.
+        Evita pares inválidos como HOME/USDT en Binance Testnet.
+        """
         await self._ensure_exchange()
         try:
             markets = self.exchange.markets or {}
-            return list(markets.keys())
+            return [
+                sym for sym, m in markets.items()
+                if sym.endswith("/USDT")
+                and m.get("active")
+                and m.get("type") == "future"
+            ]
         except Exception as e:
             logger.warning("fetch_all_symbols failed: %s", e)
             return []
