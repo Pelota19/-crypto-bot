@@ -4,12 +4,13 @@ Scalping EMA/RSI con gestión de riesgo estricta y Bracket orders.
 Telegram actúa como consola de alertas y reportes.
 Excepción SOL/USDT para abrir orden mínima si cumple estrategia.
 Incluye monitor de cierres de posiciones y watchdog para alertas de fallas.
+Modificado: usar SOLO órdenes limit para la entrada y SL/TP en modo stop-limit (sin market).
 """
 import asyncio
 import logging
 import pandas as pd
 from datetime import datetime, timedelta, timezone
-from typing import List
+from typing import List, Optional, Tuple, Any
 
 from config import (
     API_KEY, API_SECRET, USE_TESTNET, POSITION_SIZE_PERCENT, MAX_OPEN_TRADES, DAILY_PROFIT_TARGET,
@@ -39,6 +40,7 @@ WATCHLIST_DINAMICA = []
 MAX_PRICE_PER_UNIT = 1000
 MAX_TRADE_USDT = 50
 TELEGRAM_MSG_MAX = 4000  # límite seguro Telegram
+
 
 class CryptoBot:
     def __init__(self):
@@ -89,19 +91,15 @@ class CryptoBot:
         - Notifica una sola vez la actualización.
         """
         try:
-            # Muchos clientes custom exponen fetch_all_symbols (lo usabas anteriormente)
             all_symbols = await self.exchange.fetch_all_symbols()
             candidates: List[str] = []
 
             for sym in all_symbols:
-                # heurística mínima: solo pares contra USDT (evita monedas como BNB/ETH o pares margin)
                 try:
                     if not isinstance(sym, str):
                         continue
                     if not sym.upper().endswith("/USDT"):
                         continue
-                    # evita símbolos sospechosos (canal de futuros suele ser NAME/USDT)
-                    # agrega al candidato; haremos validaciones más profundas abajo
                     candidates.append(sym)
                 except Exception:
                     continue
@@ -109,12 +107,10 @@ class CryptoBot:
             filtered = []
             for sym in candidates:
                 try:
-                    # comprobar ticker primero (rápido)
                     ticker = await self.exchange.fetch_ticker(sym)
                     if not ticker:
                         continue
                     vol = float(ticker.get("quoteVolume") or ticker.get("info", {}).get("quoteVolume") or 0)
-                    # obtener OHLCV para calcular ATR y price
                     ohlcv = await self.exchange.fetch_ohlcv(sym, timeframe=TIMEFRAME_TENDENCIA, limit=50)
                     if not ohlcv:
                         continue
@@ -124,17 +120,14 @@ class CryptoBot:
                         continue
                     atr = AverageTrueRange(df['high'], df['low'], df['close'], window=14).average_true_range().iloc[-1]
                     atr_rel = atr / price
-                    # filtros de liquidez / volatilidad
                     if vol < 50_000_000 or price <= 0 or atr_rel < 0.005:
                         continue
                     filtered.append((sym, vol))
                 except Exception as e:
-                    # Si el exchange devuelve que el símbolo está inválido o no es negociable, simplemente ignóralo.
                     msg = str(e)
                     if "Invalid symbol status" in msg or "Invalid symbol" in msg:
                         logger.info("Symbol %s tiene estado inválido, se ignorará: %s", sym, msg)
                         continue
-                    # otros errores: registrar y seguir
                     logger.debug("Error validando símbolo %s: %s", sym, e)
                     continue
 
@@ -143,7 +136,6 @@ class CryptoBot:
             WATCHLIST_DINAMICA = [x[0] for x in filtered[:MAX_ACTIVE_SYMBOLS]]
             await self.safe_send_telegram(f"📊 Watchlist actualizada: {WATCHLIST_DINAMICA}")
         except AttributeError as e:
-            # Manejo explícito si BinanceClient no implementa fetch_all_symbols
             logger.error("fetch_all_symbols no disponible en exchange client: %s", e)
             await self.safe_send_telegram("❌ Error actualizando watchlist: fetch_all_symbols no disponible en el cliente exchange")
         except Exception as e:
@@ -180,6 +172,77 @@ class CryptoBot:
             await self.safe_send_telegram(f"❌ Error analizando {sym}: {e}")
             return None
         return None
+
+    async def _create_bracket_order(self, symbol: str, side: str, quantity: float,
+                                    entry_price: float, stop_price: float, take_profit_price: float,
+                                    wait_timeout: int = 30) -> Tuple[Optional[Any], Optional[Any], Optional[Any]]:
+        """
+        Implementación que usa SOLO órdenes limit para la entrada y stop-limit para SL/TP.
+        - Si el cliente tiene create_bracket_order lo intenta; si falla o no existe, usa el fallback que
+          crea una orden LIMIT de entrada y STOP-LIMIT para SL/TP.
+        Nota: las órdenes limit pueden NO ejecutarse inmediatamente. Debes aceptar el riesgo y/o ajustar
+        price/offset para mejorar probabilidad de fill. El monitor debería reconciliar órdenes no llenadas.
+        """
+        # 1) Preferir implementación nativa del cliente si existe
+        if hasattr(self.exchange, "create_bracket_order") and callable(getattr(self.exchange, "create_bracket_order")):
+            try:
+                return await self.exchange.create_bracket_order(
+                    symbol=symbol,
+                    side=side,
+                    quantity=quantity,
+                    entry_price=entry_price,
+                    stop_price=stop_price,
+                    take_profit_price=take_profit_price,
+                    wait_timeout=wait_timeout
+                )
+            except Exception as e:
+                logger.warning("create_bracket_order del cliente falló: %s — intentando fallback limit-only", e)
+
+        entry_order = None
+        stop_order = None
+        tp_order = None
+
+        close_side = "SELL" if side.upper() == "BUY" else "BUY"
+
+        # 2) Crear orden de entrada SOLO como LIMIT (sin market)
+        try:
+            # Asegúrate de que create_order acepta signature create_order(symbol, type, side, amount, price=None, params=None)
+            params_entry = {"timeInForce": "GTC"}  # keep until filled or cancelled
+            entry_order = await self.exchange.create_order(symbol, 'limit', side, quantity, entry_price, params_entry)
+            logger.info("Orden LIMIT de entrada creada para %s: %s", symbol, entry_order)
+        except Exception as e:
+            logger.error("No se pudo crear la orden LIMIT de entrada para %s a %s: %s", symbol, entry_price, e)
+            # Devolvemos (None, None, None) para indicar fallo de apertura
+            raise Exception(f"No se pudo crear orden LIMIT de entrada para {symbol}: {e}") from e
+
+        # 3) Crear SL y TP como STOP-LIMIT / TAKE-PROFIT-LIMIT (intentos con variantes comunes)
+        # Nota: dependiendo del wrapper, los tipos y nombres de params pueden variar; adaptaremos en logs.
+        # Stop-limit (SL)
+        try:
+            params_sl = {"stopPrice": stop_price, "reduceOnly": True, "timeInForce": "GTC"}
+            # tipo común: 'stop_limit' o 'STOP_LIMIT' o 'STOP_LOSS_LIMIT'
+            try:
+                stop_order = await self.exchange.create_order(symbol, 'stop_limit', close_side, quantity, stop_price, params_sl)
+            except Exception:
+                stop_order = await self.exchange.create_order(symbol, 'STOP_LIMIT', close_side, quantity, stop_price, params_sl)
+            logger.info("Stop-limit creado para %s: %s", symbol, stop_order)
+        except Exception as e:
+            logger.warning("Crear SL (stop-limit) falló para %s: %s", symbol, e)
+            stop_order = None
+
+        # Take-profit limit (TP)
+        try:
+            params_tp = {"stopPrice": take_profit_price, "reduceOnly": True, "timeInForce": "GTC"}
+            try:
+                tp_order = await self.exchange.create_order(symbol, 'take_profit_limit', close_side, quantity, take_profit_price, params_tp)
+            except Exception:
+                tp_order = await self.exchange.create_order(symbol, 'TAKE_PROFIT_LIMIT', close_side, quantity, take_profit_price, params_tp)
+            logger.info("Take-profit limit creado para %s: %s", symbol, tp_order)
+        except Exception as e:
+            logger.warning("Crear TP (take-profit limit) falló para %s: %s", symbol, e)
+            tp_order = None
+
+        return entry_order, stop_order, tp_order
 
     async def ejecutar_trade(self, sym: str, signal: str):
         if sym in self.state.open_positions:
@@ -230,7 +293,7 @@ class CryptoBot:
             return
 
         try:
-            entry_order, stop_order, tp_order = await self.exchange.create_bracket_order(
+            entry_order, stop_order, tp_order = await self._create_bracket_order(
                 symbol=sym,
                 side=side,
                 quantity=quantity,
@@ -242,10 +305,10 @@ class CryptoBot:
             if entry_order:
                 self.state.register_open_position(sym, signal, entry, (quantity / LEVERAGE) * price, sl, tp)
                 await self.safe_send_telegram(
-                    f"✅ {sym} {signal.upper()} abierto @ {entry:.2f} USDT\nSL {sl:.2f} | TP {tp:.2f} | Qty {quantity:.6f}"
+                    f"✅ {sym} {signal.upper()} LIMIT creado @ {entry:.2f} USDT\nSL {sl:.2f} | TP {tp:.2f} | Qty {quantity:.6f}"
                 )
             else:
-                await self.safe_send_telegram(f"❌ No se pudo abrir orden para {sym}")
+                await self.safe_send_telegram(f"❌ No se pudo crear orden LIMIT para {sym}")
         except Exception as e:
             await self.safe_send_telegram(f"❌ Error al abrir {sym}: {e}")
 
@@ -283,39 +346,34 @@ async def periodic_report(bot):
         except Exception as e:
             await bot.safe_send_telegram(f"❌ Error en reporte horario: {e}")
 
-
 async def monitor_positions(bot):
     """
     Monitor con compatibilidad hacia varias implementaciones de StateManager:
     - Si StateManager implementa check_positions_closed(), se usa.
     - Si implementa get_closed_positions(), se usa.
     - Si no hay método, no hace nada (fallback seguro).
+    Además: es importante que el monitor también detecte órdenes LIMIT no llenadas y las reemplace o cancele.
     """
     while True:
         try:
             closed_positions = []
-            # preferencia: check_positions_closed (tu implementación previa esperaba esto)
             if hasattr(bot.state, "check_positions_closed") and callable(getattr(bot.state, "check_positions_closed")):
                 closed_positions = bot.state.check_positions_closed()
             elif hasattr(bot.state, "get_closed_positions") and callable(getattr(bot.state, "get_closed_positions")):
                 closed_positions = bot.state.get_closed_positions()
             else:
-                # Fallback: quizás StateManager registra eventos en una lista 'closed_positions_history'
                 if hasattr(bot.state, "closed_positions_history"):
                     closed_positions = getattr(bot.state, "closed_positions_history")
                 else:
-                    # Si no hay nada, evitamos lanzar excepción y simplemente saltamos
                     closed_positions = []
 
             for pos in closed_positions:
-                # soporte flexible para estructuras de posición
                 try:
                     sym = pos.get("symbol") if isinstance(pos, dict) else pos["symbol"]
                     pnl = pos.get("pnl", 0.0) if isinstance(pos, dict) else pos.get("pnl", 0.0)
                     reason = pos.get("reason", "unknown") if isinstance(pos, dict) else pos.get("reason", "unknown")
                     await bot.safe_send_telegram(f"📉 {sym} cerrada por {reason}. PnL: {pnl:.2f} USDT")
                 except Exception:
-                    # Si la estructura es distinta, loguea y continúa
                     logger.debug("Posición cerrada con formato inesperado: %s", pos)
                     continue
         except Exception as e:
@@ -337,7 +395,7 @@ async def main():
     bot = CryptoBot()
     tasks = []
     try:
-        await bot.safe_send_telegram("🚀 CryptoBot iniciado en TESTNET")
+        await bot.safe_send_telegram("🚀 CryptoBot iniciado en TESTNET (limit-only orders)")
         await bot.actualizar_watchlist()
         tasks.append(asyncio.create_task(periodic_report(bot)))
         tasks.append(asyncio.create_task(monitor_positions(bot)))
