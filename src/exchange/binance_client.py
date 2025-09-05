@@ -7,6 +7,8 @@ Cambios / mejoras aplicadas:
 - Activa options['adjustForTimeDifference'] para sincronizar timestamps con el servidor.
 - Mantiene compatibilidad con el resto del código (métodos: fetch_all_symbols, fetch_ohlcv, create_order, etc.).
 - Añade parámetro verbose para debugging de CCXT (muestra request/response).
+- Añade parámetro hedge_mode (True por defecto). Si hedge_mode=True y la orden es FUTURES, el cliente
+  autoinyectará positionSide ('LONG' para BUY, 'SHORT' para SELL) cuando no esté explícito en params.
 """
 import logging
 from typing import Optional, Any, List
@@ -26,6 +28,7 @@ class BinanceClient:
         use_testnet: bool = False,
         dry_run: bool = False,
         verbose: bool = False,
+        hedge_mode: bool = True,
     ):
         """
         Constructor:
@@ -33,6 +36,7 @@ class BinanceClient:
         - use_testnet: apunta a testnet.binancefuture.com para USDT-M futures
         - dry_run: no crea órdenes reales, devuelve objeto simulado
         - verbose: activa exchange.verbose para debug (no compartir signatures)
+        - hedge_mode: si True intenta inyectar 'positionSide' en órdenes futures cuando falta.
         """
         # Leer y recortar credenciales (evita saltos de línea o espacios accidentales)
         api_key = (api_key or os.getenv("BINANCE_API_KEY") or "").strip()
@@ -48,6 +52,7 @@ class BinanceClient:
         self.use_testnet = use_testnet
         self.dry_run = dry_run
         self.verbose = verbose
+        self.hedge_mode = hedge_mode
 
         self.exchange: Optional[ccxt.binance] = None
         self._initialized = False
@@ -219,6 +224,31 @@ class BinanceClient:
                 "info": {"dry_run": True}
             }
         try:
+            # defensive copy so we don't mutate caller dict
+            params = dict(params or {})
+
+            # Determinar si el mercado es FUTURE (usualmente para USDT-M)
+            market_type = None
+            try:
+                if self.exchange and getattr(self.exchange, "markets", None):
+                    m = self.exchange.markets.get(symbol)
+                    if m:
+                        market_type = m.get("type")
+            except Exception:
+                market_type = None
+
+            # Fallback: usar defaultType en options si no pudimos obtener markets
+            if not market_type:
+                try:
+                    market_type = getattr(self.exchange, "options", {}).get("defaultType")
+                except Exception:
+                    market_type = None
+
+            # Auto-inject positionSide only when hedge_mode=True and estamos en futuros
+            if self.hedge_mode and market_type == "future" and "positionSide" not in params:
+                params["positionSide"] = "LONG" if side.upper() == "BUY" else "SHORT"
+                logger.debug("Auto-injected positionSide=%s for %s %s", params["positionSide"], side, symbol)
+
             return await self.exchange.create_order(symbol, type, side, amount, price, params or {})
         except Exception as e:
             # Añadimos contexto y tratamos de exponer last_http_response para debug
