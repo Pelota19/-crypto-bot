@@ -10,9 +10,7 @@ Exposes the methods the bot expects:
 - fetch_order(order_id, symbol=None)
 - close()
 
-This file is intended to replace/standalone the previous client implementation if you want a
-clean, defensive wrapper that works with CCXT async binance. Adjust API URLs / options if your
-environment requires different testnet endpoints.
+Replace your existing src/exchange/binance_client.py with this file.
 """
 import logging
 from typing import Optional, Any, List
@@ -40,42 +38,35 @@ class BinanceClient:
     async def _ensure_exchange(self):
         if self._initialized and self.exchange:
             return
-        # Create ccxt async binance instance with futures defaultType
         params = {
             'apiKey': self.api_key,
             'secret': self.api_secret,
             'enableRateLimit': True,
             'options': {
-                'defaultType': 'future',  # USDT-M futures
+                'defaultType': 'future',
             }
         }
-        # If you want to enforce the testnet endpoints for Binance Futures testnet,
-        # uncomment or adjust the following. This is left as a best-effort and may
-        # need updating depending on the ccxt version.
         if self.use_testnet:
             logger.info("Binance sandbox mode enabled")
-            # CCXT's testnet setting for Binance futures can vary; ccxt may honor 'urls' override:
-            params['urls'] = {
-                # Common testnet endpoints—if incorrect for your ccxt version, update accordingly.
-                'api': {
-                    'public': 'https://testnet.binancefuture.com/fapi/v1',
-                    'private': 'https://testnet.binancefuture.com/fapi/v1',
+            # Best-effort testnet config (may vary per ccxt version)
+            try:
+                params['urls'] = {
+                    'api': {
+                        'public': 'https://testnet.binancefuture.com/fapi/v1',
+                        'private': 'https://testnet.binancefuture.com/fapi/v1',
+                    }
                 }
-            }
-            # Some setups simply set 'test' flag; ccxt historically supports 'sandboxMode' on some wrappers.
-            params['options']['defaultType'] = 'future'
+            except Exception:
+                pass
 
         self.exchange = ccxt.binance(params)
-        # For some ccxt versions you need to set sandboxMode explicitly:
         try:
-            if self.use_testnet:
-                # ccxt binance has attribute 'set_sandbox_mode' in some versions
-                if hasattr(self.exchange, 'set_sandbox_mode'):
-                    self.exchange.set_sandbox_mode(True)
+            if self.use_testnet and hasattr(self.exchange, 'set_sandbox_mode'):
+                self.exchange.set_sandbox_mode(True)
         except Exception:
             pass
 
-        # Load markets once
+        # Load markets to populate self.exchange.markets
         try:
             await self.exchange.load_markets()
         except Exception as e:
@@ -84,9 +75,6 @@ class BinanceClient:
         self._initialized = True
 
     async def fetch_all_symbols(self) -> List[str]:
-        """
-        Return a list of symbol strings, e.g. ["BTC/USDT", "ETH/USDT", ...]
-        """
         await self._ensure_exchange()
         try:
             markets = self.exchange.markets or {}
@@ -126,7 +114,7 @@ class BinanceClient:
                 return None
             return ohlcv
         except BadRequest as e:
-            # Frequent on Binance for symbols not active on that market (e.g. -1122)
+            # Frequent for Binance -1122 Invalid symbol status
             logger.warning("fetch_ohlcv BadRequest for %s: %s", symbol, e)
             return None
         except (NetworkError, RequestTimeout) as e:
@@ -146,7 +134,6 @@ class BinanceClient:
         await self._ensure_exchange()
         if self.dry_run:
             logger.info("DRY RUN create_order %s %s %s @%s qty=%s params=%s", symbol, type, side, price, amount, params)
-            # Return a minimal simulated order dict
             return {
                 "id": "dryrun-" + symbol.replace('/', ''),
                 "symbol": symbol,
@@ -158,7 +145,6 @@ class BinanceClient:
                 "info": {"dry_run": True}
             }
         try:
-            # ccxt create_order signature: create_order(symbol, type, side, amount, price=None, params={})
             return await self.exchange.create_order(symbol, type, side, amount, price, params or {})
         except Exception as e:
             logger.exception("create_order failed for %s %s %s %s: %s", symbol, type, side, amount, e)
