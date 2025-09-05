@@ -42,6 +42,8 @@ PCT_CHANGE_24H = float(getenv("PCT_CHANGE_24H", "10.0"))  # 10% por defecto, con
 
 class CryptoBot:
     def __init__(self):
+        # Instanciamos el cliente Binance pasando las credenciales desde config y la flag USE_TESTNET.
+        # BinanceClient ahora soporta use_testnet y hace strip() de las creds internamente.
         self.exchange = BinanceClient(
             api_key=API_KEY, api_secret=API_SECRET,
             use_testnet=USE_TESTNET, dry_run=False
