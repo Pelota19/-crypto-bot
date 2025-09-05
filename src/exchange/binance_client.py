@@ -1,11 +1,9 @@
 """
 Robust async wrapper around ccxt.async_support.binance (USDT-M Futures).
 
-Cambios clave:
 - Testnet bien configurado para USDT-M (fapi endpoints).
-- fetch_all_symbols() usa fapiPublicGetExchangeInfo para traer TODOS los
-  símbolos PERPETUAL/USDT en estado TRADING, y los devuelve como 'BASE/USDT'.
-- fetch_symbols_with_change() filtra por variación ±X% en 24h.
+- fetch_all_symbols() usa fapiPublicGetExchangeInfo para traer todos los
+  símbolos PERPETUAL/USDT en estado TRADING, devuelve 'BASE/USDT'.
 - Manejo de errores y cierre limpio.
 """
 import logging
@@ -15,7 +13,6 @@ import ccxt.async_support as ccxt
 from ccxt.base.errors import BadRequest, ExchangeError, NetworkError, RequestTimeout
 
 logger = logging.getLogger(__name__)
-
 
 class BinanceClient:
     def __init__(self, api_key: str = None, api_secret: str = None, use_testnet: bool = False, dry_run: bool = False):
@@ -35,12 +32,11 @@ class BinanceClient:
             "secret": self.api_secret,
             "enableRateLimit": True,
             "options": {
-                "defaultType": "future",  # USDT-M Futures
+                "defaultType": "future",
                 "warnOnFetchOHLCVLimitArgument": False,
             },
         }
 
-        # Forzamos endpoints de USDT-M testnet (Futures API = fapi)
         if self.use_testnet:
             logger.info("Binance sandbox mode enabled (USDT-M fapi testnet)")
             params["urls"] = {
@@ -70,15 +66,15 @@ class BinanceClient:
             info = await self.exchange.fapiPublicGetExchangeInfo()
             out = []
             for s in info.get("symbols", []):
-                if (
-                    s.get("contractType") == "PERPETUAL"
-                    and s.get("quoteAsset") == "USDT"
-                    and s.get("status") == "TRADING"
-                ):
-                    base = s.get("baseAsset")
-                    quote = s.get("quoteAsset")
-                    if base and quote:
-                        out.append(f"{base}/{quote}")
+                try:
+                    if s.get("contractType") == "PERPETUAL" and s.get("quoteAsset") == "USDT" and s.get("status") == "TRADING":
+                        base = s.get("baseAsset")
+                        quote = s.get("quoteAsset")
+                        if base and quote:
+                            out.append(f"{base}/{quote}")
+                except Exception:
+                    continue
+            # quitar duplicados por si acaso
             out = sorted(list(set(out)))
             logger.info("Símbolos detectados en Binance (USDT-M PERPETUAL): %s", out)
             return out
@@ -90,59 +86,24 @@ class BinanceClient:
         syms = await self._fetch_all_usdt_perpetual_symbols_via_raw()
         if syms:
             return syms
-
+        # fallback
         try:
             await self._ensure_exchange()
             markets = self.exchange.markets or {}
             return [
-                sym
-                for sym, m in markets.items()
-                if isinstance(sym, str)
-                and sym.endswith("/USDT")
-                and m.get("type") == "future"
-                and m.get("active", True)
+                sym for sym, m in markets.items()
+                if isinstance(sym, str) and sym.endswith("/USDT") and m.get("type") == "future" and m.get("active", True)
             ]
         except Exception as e:
             logger.warning("fetch_all_symbols fallback failed: %s", e)
             return []
 
-    async def fetch_symbols_with_change(self, pct_threshold: float = 5.0) -> List[str]:
-        """
-        Devuelve lista de símbolos USDT-M PERPETUAL que en las últimas 24h
-        hayan subido o bajado más que `pct_threshold` (%).
-        """
-        symbols = await self.fetch_all_symbols()
-        if not symbols:
-            logger.warning("No symbols available for fetch_symbols_with_change")
-            return []
-
-        movers = []
-        for sym in symbols:
-            ticker = await self.fetch_ticker(sym)
-            if not ticker or "percentage" not in ticker:
-                continue
-            try:
-                pct = float(ticker["percentage"])
-                if abs(pct) >= pct_threshold:
-                    movers.append(sym)
-            except Exception:
-                continue
-
-        logger.info("Símbolos con movimiento > %.2f%% en 24h: %s", pct_threshold, movers)
-        return movers
-
     async def fetch_ticker(self, symbol: str):
         await self._ensure_exchange()
         try:
             return await self.exchange.fetch_ticker(symbol)
-        except BadRequest as e:
-            logger.warning("fetch_ticker BadRequest for %s: %s", symbol, e)
-            return None
-        except (NetworkError, RequestTimeout) as e:
-            logger.warning("fetch_ticker network/timeout for %s: %s", symbol, e)
-            return None
-        except ExchangeError as e:
-            logger.warning("fetch_ticker ExchangeError for %s: %s", symbol, e)
+        except (BadRequest, NetworkError, RequestTimeout, ExchangeError) as e:
+            logger.warning("fetch_ticker failed for %s: %s", symbol, e)
             return None
         except Exception as e:
             logger.exception("fetch_ticker unexpected error for %s: %s", symbol, e)
@@ -152,18 +113,9 @@ class BinanceClient:
         await self._ensure_exchange()
         try:
             ohlcv = await self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=since, limit=limit)
-            if not ohlcv:
-                logger.debug("fetch_ohlcv returned empty for %s %s", symbol, timeframe)
-                return None
-            return ohlcv
-        except BadRequest as e:
-            logger.warning("fetch_ohlcv BadRequest for %s: %s", symbol, e)
-            return None
-        except (NetworkError, RequestTimeout) as e:
-            logger.warning("fetch_ohlcv network/timeout for %s: %s", symbol, e)
-            return None
-        except ExchangeError as e:
-            logger.warning("fetch_ohlcv ExchangeError for %s: %s", symbol, e)
+            return ohlcv if ohlcv else None
+        except (BadRequest, NetworkError, RequestTimeout, ExchangeError) as e:
+            logger.warning("fetch_ohlcv failed for %s: %s", symbol, e)
             return None
         except Exception as e:
             logger.exception("fetch_ohlcv unexpected error for %s: %s", symbol, e)
