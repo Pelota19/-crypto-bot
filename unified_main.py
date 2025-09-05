@@ -14,9 +14,9 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Tuple, Any
 from os import getenv
 
-from config import (
-    API_KEY, API_SECRET, USE_TESTNET, POSITION_SIZE_PERCENT, MAX_OPEN_TRADES, DAILY_PROFIT_TARGET,
-    TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, MIN_NOTIONAL_USD, LEVERAGE
+from src.config import (
+    API_KEY, API_SECRET, USE_TESTNET, DRY_RUN, POSITION_SIZE_PERCENT, MAX_OPEN_TRADES,
+    DAILY_PROFIT_TARGET, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, MIN_NOTIONAL_USD, LEVERAGE
 )
 
 from src.exchange.binance_client import BinanceClient
@@ -42,11 +42,11 @@ PCT_CHANGE_24H = float(getenv("PCT_CHANGE_24H", "10.0"))  # 10% por defecto, con
 
 class CryptoBot:
     def __init__(self):
-        # Instanciamos el cliente Binance pasando las credenciales desde config y la flag USE_TESTNET.
-        # BinanceClient ahora soporta use_testnet y hace strip() de las creds internamente.
+        # Instanciamos el cliente Binance pasando las credenciales desde config y la flag USE_TESTNET y DRY_RUN.
+        # BinanceClient maneja strip() internamente y soporta use_testnet/dry_run.
         self.exchange = BinanceClient(
             api_key=API_KEY, api_secret=API_SECRET,
-            use_testnet=USE_TESTNET, dry_run=False
+            use_testnet=USE_TESTNET, dry_run=DRY_RUN
         )
         self.telegram = TelegramNotifier(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
         self.state = StateManager(daily_profit_target=DAILY_PROFIT_TARGET)
