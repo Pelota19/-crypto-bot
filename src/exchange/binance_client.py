@@ -1,14 +1,11 @@
 """
-Robust async wrapper around ccxt.async_support.binance.
+Robust async wrapper around ccxt.async_support.binance (USDT-M Futures).
 
-Exposes:
-- fetch_all_symbols()
-- fetch_ticker(symbol)
-- fetch_ohlcv(symbol, timeframe, limit)  <-- catches common ccxt errors and returns None
-- create_order(symbol, type, side, amount, price=None, params=None)
-- fetch_open_orders(symbol=None)
-- fetch_order(order_id, symbol=None)
-- close()
+Cambios clave:
+- Testnet bien configurado para USDT-M (fapi endpoints).
+- fetch_all_symbols() usa fapiPublicGetExchangeInfo para traer TODOS los
+  símbolos PERPETUAL/USDT en estado TRADING, y los devuelve como 'BASE/USDT'.
+- Manejo de errores y cierre limpio.
 """
 import logging
 from typing import Optional, Any, List
@@ -31,30 +28,40 @@ class BinanceClient:
     async def _ensure_exchange(self):
         if self._initialized and self.exchange:
             return
+
         params = {
-            'apiKey': self.api_key,
-            'secret': self.api_secret,
-            'enableRateLimit': True,
-            'options': {'defaultType': 'future'},
+            "apiKey": self.api_key,
+            "secret": self.api_secret,
+            "enableRateLimit": True,
+            "options": {
+                # USDT-M Futures
+                "defaultType": "future",
+                # evita problemas de timestamp por latencia
+                "warnOnFetchOHLCVLimitArgument": False,
+            },
         }
+
+        # Forzamos endpoints de USDT-M testnet (Futures API = fapi)
         if self.use_testnet:
-            logger.info("Binance sandbox mode enabled")
-            # Best-effort testnet config; adjust as needed for your ccxt version
-            params['urls'] = {
-                'api': {
-                    'public': 'https://testnet.binancefuture.com/fapi/v1',
-                    'private': 'https://testnet.binancefuture.com/fapi/v1',
+            logger.info("Binance sandbox mode enabled (USDT-M fapi testnet)")
+            params["urls"] = {
+                "api": {
+                    # Estos nombres de claves son los que ccxt usa para USDT-M
+                    "fapiPublic": "https://testnet.binancefuture.com/fapi/v1",
+                    "fapiPrivate": "https://testnet.binancefuture.com/fapi/v1",
                 }
             }
 
-        # instantiate ccxt binance with params
+        # instanciar
         self.exchange = ccxt.binance(params)
         try:
-            if self.use_testnet and hasattr(self.exchange, 'set_sandbox_mode'):
-                self.exchange.set_sandbox_mode(True)
+            if hasattr(self.exchange, "set_sandbox_mode"):
+                # Esto asegura que ccxt reescriba las rutas a testnet cuando corresponda
+                self.exchange.set_sandbox_mode(self.use_testnet)
         except Exception:
             pass
 
+        # cargar mercados (no fiable para listar todo en testnet, pero útil para caches)
         try:
             await self.exchange.load_markets()
         except Exception as e:
@@ -62,27 +69,62 @@ class BinanceClient:
 
         self._initialized = True
 
-    async def fetch_all_symbols(self) -> List[str]:
+    async def _fetch_all_usdt_perpetual_symbols_via_raw(self) -> List[str]:
         """
-        Devuelve solo símbolos válidos de Futuros USDT activos.
-        Incluye delivery futures de testnet (ej: BTC/USDT:USDT-250926).
+        Usa la ruta cruda fapiPublicGetExchangeInfo para traer TODA la lista de
+        símbolos USDT-M PERPETUAL en estado TRADING en testnet.
+        Retorna en formato 'BASE/USDT' (p.ej. 'BTC/USDT').
         """
         await self._ensure_exchange()
         try:
-            markets = self.exchange.markets or {}
-            candidates = [
-                sym for sym, m in markets.items()
-                if m.get("type") == "future" and (
-                    sym.endswith("/USDT") or ":USDT" in sym
-                )
-            ]
-            logger.info("Símbolos detectados en Binance: %s", candidates)
-            return candidates
+            # Llamada cruda de ccxt a la API de Binance USDT-M
+            info = await self.exchange.fapiPublicGetExchangeInfo()
+            out = []
+            for s in info.get("symbols", []):
+                try:
+                    if (
+                        s.get("contractType") == "PERPETUAL" and
+                        s.get("quoteAsset") == "USDT" and
+                        s.get("status") == "TRADING"
+                    ):
+                        base = s.get("baseAsset")
+                        quote = s.get("quoteAsset")
+                        if base and quote:
+                            out.append(f"{base}/{quote}")
+                except Exception:
+                    continue
+            # quitar duplicados por si acaso
+            out = sorted(list(set(out)))
+            logger.info("Símbolos detectados en Binance (USDT-M PERPETUAL): %s", out)
+            return out
         except Exception as e:
-            logger.warning("fetch_all_symbols failed: %s", e)
+            logger.warning("No se pudieron obtener símbolos PERPETUAL via fapiPublicGetExchangeInfo: %s", e)
             return []
 
-    async def fetch_ticker(self, symbol: str) -> Optional[dict]:
+    async def fetch_all_symbols(self) -> List[str]:
+        """
+        Devuelve símbolos válidos de USDT-M PERPETUAL en estado TRADING.
+        """
+        syms = await self._fetch_all_usdt_perpetual_symbols_via_raw()
+        if syms:
+            return syms
+
+        # Fallback: intenta leer de markets (menos fiable en testnet)
+        try:
+            await self._ensure_exchange()
+            markets = self.exchange.markets or {}
+            return [
+                sym for sym, m in markets.items()
+                if isinstance(sym, str)
+                and sym.endswith("/USDT")
+                and m.get("type") == "future"
+                and m.get("active", True)
+            ]
+        except Exception as e:
+            logger.warning("fetch_all_symbols fallback failed: %s", e)
+            return []
+
+    async def fetch_ticker(self, symbol: str):
         await self._ensure_exchange()
         try:
             return await self.exchange.fetch_ticker(symbol)
@@ -99,10 +141,9 @@ class BinanceClient:
             logger.exception("fetch_ticker unexpected error for %s: %s", symbol, e)
             return None
 
-    async def fetch_ohlcv(self, symbol: str, timeframe: str = '1m', since: Optional[int] = None, limit: int = 100):
+    async def fetch_ohlcv(self, symbol: str, timeframe: str = "1m", since: Optional[int] = None, limit: int = 100):
         """
-        Robust wrapper for fetch_ohlcv. Returns list of OHLCV or None on error.
-        Catches BadRequest (e.g. Binance -1122 Invalid symbol status) and network / exchange errors.
+        Robust wrapper para fetch_ohlcv. Devuelve lista de OHLCV o None si falla.
         """
         await self._ensure_exchange()
         try:
