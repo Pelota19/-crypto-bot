@@ -1,17 +1,11 @@
+# (reemplaza por completo tu binance_client.py existente con este contenido)
 """
 Robust async wrapper around ccxt.async_support.binance (USDT-M Futures).
 
-Cambios / mejoras aplicadas:
-- Lee credenciales desde parámetros o desde entorno y hace .strip() para evitar espacios/saltos de línea.
-- Añade opción use_testnet para forzar los endpoints de testnet.binancefuture.com.
-- Activa options['adjustForTimeDifference'] para sincronizar timestamps con el servidor.
-- Mantiene compatibilidad con el resto del código (métodos: fetch_all_symbols, fetch_ohlcv, create_order, etc.).
-- Añade parámetro verbose para debugging de CCXT (muestra request/response).
-- Añade parámetro hedge_mode (True por defecto). Si hedge_mode=True y la orden es FUTURES, el cliente
-  autoinyectará positionSide ('LONG' para BUY, 'SHORT' para SELL) cuando no esté explícito en params.
-- Añade fallback automático para tipos de órdenes SL/TP no válidos en Binance Futures:
-  si pides 'stop_limit' o 'take_profit_limit' y Binance rechaza, reintentamos con
-  'stop_market' y 'take_profit_market' respectivamente.
+Incluye:
+- autoinyección de positionSide cuando hedge_mode=True
+- fallback automático para tipos de órdenes SL/TP no válidos en Binance Futures
+- cancel_order wrapper
 """
 import logging
 from typing import Optional, Any, List
@@ -33,15 +27,6 @@ class BinanceClient:
         verbose: bool = False,
         hedge_mode: bool = True,
     ):
-        """
-        Constructor:
-        - api_key/api_secret: si no se pasan, se leen de env BINANCE_API_KEY / BINANCE_SECRET
-        - use_testnet: apunta a testnet.binancefuture.com para USDT-M futures
-        - dry_run: no crea órdenes reales, devuelve objeto simulado
-        - verbose: activa exchange.verbose para debug (no compartir signatures)
-        - hedge_mode: si True intenta inyectar 'positionSide' en órdenes futures cuando falta.
-        """
-        # Leer y recortar credenciales (evita saltos de línea o espacios accidentales)
         api_key = (api_key or os.getenv("BINANCE_API_KEY") or "").strip()
         api_secret = (api_secret or os.getenv("BINANCE_SECRET") or "").strip()
 
@@ -103,7 +88,7 @@ class BinanceClient:
 
         self._initialized = True
 
-    async def _fetch_all_usdt_perpetual_symbols_via_raw(self) -> List[str]:
+    async def fetch_all_symbols(self) -> List[str]:
         await self._ensure_exchange()
         try:
             info = await self.exchange.fapiPublicGetExchangeInfo()
@@ -122,40 +107,26 @@ class BinanceClient:
                 except Exception:
                     continue
             out = sorted(list(set(out)))
-            logger.info("Símbolos detectados en Binance (USDT-M PERPETUAL): %s", out)
             return out
-        except Exception as e:
-            logger.warning("No se pudieron obtener símbolos PERPETUAL via fapiPublicGetExchangeInfo: %s", e)
-            return []
-
-    async def fetch_all_symbols(self) -> List[str]:
-        syms = await self._fetch_all_usdt_perpetual_symbols_via_raw()
-        if syms:
-            return syms
-
-        try:
-            await self._ensure_exchange()
-            markets = self.exchange.markets or {}
-            return [
-                sym for sym, m in markets.items()
-                if isinstance(sym, str)
-                and sym.endswith("/USDT")
-                and m.get("type") == "future"
-                and m.get("active", True)
-            ]
-        except Exception as e:
-            logger.warning("fetch_all_symbols fallback failed: %s", e)
-            return []
+        except Exception:
+            # fallback to loaded markets
+            try:
+                markets = self.exchange.markets or {}
+                return [
+                    sym for sym, m in markets.items()
+                    if isinstance(sym, str)
+                    and sym.endswith("/USDT")
+                    and m.get("type") == "future"
+                    and m.get("active", True)
+                ]
+            except Exception:
+                return []
 
     async def fetch_ticker(self, symbol: str):
         await self._ensure_exchange()
         try:
             return await self.exchange.fetch_ticker(symbol)
-        except (BadRequest, NetworkError, RequestTimeout, ExchangeError) as e:
-            logger.warning("fetch_ticker failed for %s: %s", symbol, e)
-            return None
-        except Exception as e:
-            logger.exception("fetch_ticker unexpected error for %s: %s", symbol, e)
+        except Exception:
             return None
 
     async def fetch_ohlcv(self, symbol: str, timeframe: str = "1m", since: Optional[int] = None, limit: int = 100):
@@ -163,7 +134,6 @@ class BinanceClient:
         try:
             ohlcv = await self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=since, limit=limit)
             if not ohlcv:
-                logger.debug("fetch_ohlcv returned empty for %s %s", symbol, timeframe)
                 return None
             for i in range(len(ohlcv)):
                 try:
@@ -171,11 +141,7 @@ class BinanceClient:
                 except Exception:
                     pass
             return ohlcv
-        except (BadRequest, NetworkError, RequestTimeout, ExchangeError) as e:
-            logger.warning("fetch_ohlcv failed for %s %s: %s", symbol, timeframe, e)
-            return None
-        except Exception as e:
-            logger.exception("fetch_ohlcv unexpected error for %s %s: %s", symbol, timeframe, e)
+        except Exception:
             return None
 
     async def fetch_24h_change(self, symbol: str) -> Optional[float]:
@@ -210,10 +176,8 @@ class BinanceClient:
                 "info": {"dry_run": True}
             }
         try:
-            # defensive copy so we don't mutate caller dict
             params = dict(params or {})
 
-            # Determinar si el mercado es FUTURE (usualmente para USDT-M)
             market_type = None
             try:
                 if self.exchange and getattr(self.exchange, "markets", None):
@@ -229,22 +193,18 @@ class BinanceClient:
                 except Exception:
                     market_type = None
 
-            # Auto-inject positionSide only when hedge_mode=True and estamos en futuros
             if self.hedge_mode and market_type == "future" and "positionSide" not in params:
                 params["positionSide"] = "LONG" if side.upper() == "BUY" else "SHORT"
                 logger.debug("Auto-injected positionSide=%s for %s %s", params["positionSide"], side, symbol)
 
-            # Primary attempt
             try:
                 return await self.exchange.create_order(symbol, type, side, amount, price, params or {})
             except InvalidOrder as exc:
-                # si Binance rechaza el tipo de orden, intentar fallback para SL/TP en futures
                 msg = str(exc)
                 logger.debug("create_order InvalidOrder: %s", msg)
                 fallback_map = {
                     "stop_limit": "stop_market",
                     "take_profit_limit": "take_profit_market",
-                    # otros mapeos posibles:
                     "stop_loss_limit": "stop_market",
                     "take_profit": "take_profit_market",
                 }
@@ -257,31 +217,35 @@ class BinanceClient:
                     except Exception as exc2:
                         logger.exception("Retry with %s also failed for %s: %s", new_type, symbol, exc2)
                         raise
-                # si no hay fallback o el fallback falló, re-lanzar
                 raise
 
         except Exception as e:
             logger.exception("create_order failed for %s %s %s %s: %s", symbol, type, side, amount, e)
-            try:
-                logger.debug("Last http response: %s", getattr(self.exchange, 'last_http_response', None))
-            except Exception:
-                pass
             raise
+
+    async def cancel_order(self, order_id: str, symbol: Optional[str] = None) -> Any:
+        await self._ensure_exchange()
+        try:
+            if self.dry_run:
+                logger.info("DRY RUN cancel_order %s %s", order_id, symbol)
+                return {"id": order_id, "status": "canceled", "info": {"dry_run": True}}
+            return await self.exchange.cancel_order(order_id, symbol)
+        except Exception as e:
+            logger.warning("cancel_order failed for %s (%s): %s", order_id, symbol, e)
+            return None
 
     async def fetch_open_orders(self, symbol: Optional[str] = None) -> List[dict]:
         await self._ensure_exchange()
         try:
             return await self.exchange.fetch_open_orders(symbol)
-        except Exception as e:
-            logger.warning("fetch_open_orders failed for %s: %s", symbol, e)
+        except Exception:
             return []
 
     async def fetch_order(self, order_id: str, symbol: Optional[str] = None) -> Optional[dict]:
         await self._ensure_exchange()
         try:
             return await self.exchange.fetch_order(order_id, symbol)
-        except Exception as e:
-            logger.warning("fetch_order failed for %s (%s): %s", order_id, symbol, e)
+        except Exception:
             return None
 
     async def close(self):
