@@ -16,7 +16,8 @@ from os import getenv
 
 from src.config import (
     API_KEY, API_SECRET, USE_TESTNET, DRY_RUN, POSITION_SIZE_PERCENT, MAX_OPEN_TRADES,
-    DAILY_PROFIT_TARGET, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, MIN_NOTIONAL_USD, LEVERAGE
+    DAILY_PROFIT_TARGET, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, MIN_NOTIONAL_USD, LEVERAGE,
+    HEDGE_MODE
 )
 
 from src.exchange.binance_client import BinanceClient
@@ -44,9 +45,10 @@ class CryptoBot:
     def __init__(self):
         # Instanciamos el cliente Binance pasando las credenciales desde config y la flag USE_TESTNET y DRY_RUN.
         # BinanceClient maneja strip() internamente y soporta use_testnet/dry_run.
+        # Pasamos hedge_mode según config (HEDGE_MODE True = DUAL/Hedge).
         self.exchange = BinanceClient(
             api_key=API_KEY, api_secret=API_SECRET,
-            use_testnet=USE_TESTNET, dry_run=DRY_RUN
+            use_testnet=USE_TESTNET, dry_run=DRY_RUN, hedge_mode=HEDGE_MODE
         )
         self.telegram = TelegramNotifier(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
         self.state = StateManager(daily_profit_target=DAILY_PROFIT_TARGET)
@@ -95,21 +97,36 @@ class CryptoBot:
                                     wait_timeout: int = 30) -> Tuple[Optional[Any], Optional[Any], Optional[Any]]:
         entry_order = stop_order = tp_order = None
         close_side = "SELL" if side.upper() == "BUY" else "BUY"
+
+        # --- Nuevo: mapear positionSide ---
+        position_side = "LONG" if side.upper() == "BUY" else "SHORT"
+
         try:
-            entry_order = await self.exchange.create_order(symbol, "limit", side, quantity, entry_price, {"timeInForce": "GTC"})
+            params_entry = {"timeInForce": "GTC", "positionSide": position_side}
+            entry_order = await self.exchange.create_order(symbol, "limit", side, quantity, entry_price, params_entry)
             logger.info("LIMIT entry creada %s: %s", symbol, entry_order)
         except Exception as e:
             raise Exception(f"No se pudo crear orden LIMIT de entrada para {symbol}: {e}") from e
 
         try:
-            params_sl = {"stopPrice": stop_price, "reduceOnly": True, "timeInForce": "GTC"}
+            params_sl = {
+                "stopPrice": stop_price,
+                "reduceOnly": True,
+                "timeInForce": "GTC",
+                "positionSide": position_side
+            }
             stop_order = await self.exchange.create_order(symbol, "stop_limit", close_side, quantity, stop_price, params_sl)
             logger.info("SL stop-limit creado %s: %s", symbol, stop_order)
         except Exception as e:
             logger.warning("Crear SL falló para %s: %s", symbol, e)
 
         try:
-            params_tp = {"stopPrice": take_profit_price, "reduceOnly": True, "timeInForce": "GTC"}
+            params_tp = {
+                "stopPrice": take_profit_price,
+                "reduceOnly": True,
+                "timeInForce": "GTC",
+                "positionSide": position_side
+            }
             tp_order = await self.exchange.create_order(symbol, "take_profit_limit", close_side, quantity, take_profit_price, params_tp)
             logger.info("TP take-profit-limit creado %s: %s", symbol, tp_order)
         except Exception as e:
