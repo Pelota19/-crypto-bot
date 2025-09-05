@@ -226,46 +226,30 @@ class BinanceClient:
         params = dict(params or {})
 
         try:
-            # determine dual mode first
             try:
                 dual = await self._is_dual_position_mode()
             except Exception:
                 dual = False
 
-            # sanitize params: remove any position-side keys when account is ONE-WAY
-            if not dual:
-                for k in list(params.keys()):
-                    if k.lower() in ("positionside", "position_side", "pos_side", "posside", "position"):
-                        params.pop(k, None)
-            # When dual, normalize the positionSide if present or set it based on side
-            else:
-                # normalize existing key name to 'positionSide' if variations are used
-                for k in list(params.keys()):
-                    if k.lower() in ("position_side", "pos_side", "posside", "position"):
-                        params["positionSide"] = params.pop(k)
+            side_l = (side or "").lower() if isinstance(side, str) else None
+
+            if dual:
                 if "positionSide" not in params:
-                    side_l = (side or "").lower() if isinstance(side, str) else None
                     if side_l == "buy":
                         params["positionSide"] = "LONG"
                     elif side_l == "sell":
                         params["positionSide"] = "SHORT"
                 else:
-                    # normalize value
                     try:
                         ps = str(params.get("positionSide")).upper()
                         if ps in ("LONG", "SHORT", "BOTH"):
                             params["positionSide"] = ps
-                        else:
-                            # fallback: set based on side if unknown
-                            side_l = (side or "").lower() if isinstance(side, str) else None
-                            if side_l == "buy":
-                                params["positionSide"] = "LONG"
-                            elif side_l == "sell":
-                                params["positionSide"] = "SHORT"
                     except Exception:
                         pass
+            else:
+                if "positionSide" in params:
+                    params.pop("positionSide", None)
 
-            # If dry_run -> simulate and return without calling exchange
             if self.dry_run:
                 ts = int(time.time() * 1000)
                 fake_id = f"dryrun-{ts}"
@@ -297,14 +281,6 @@ class BinanceClient:
                 }
                 return simulated
 
-            # Final logging for debugging the exact params sent to Binance
-            try:
-                logger.debug("About to call exchange.create_order: symbol=%s type=%s side=%s amount=%s price=%s params=%s dual=%s",
-                             symbol, type, side, amount, price, params, dual)
-            except Exception:
-                pass
-
-            # call the real exchange
             result = await self.exchange.create_order(symbol, type, side, amount, price, params or {})
             return result
 
