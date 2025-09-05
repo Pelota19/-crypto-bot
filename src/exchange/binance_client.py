@@ -1,162 +1,157 @@
 """
-src/exchange/binance_client.py
+Robust async wrapper around ccxt.async_support.binance.
 
-Async wrapper for Binance Futures via ccxt.async_support.
-Soporta sandbox/testnet y modo DRY_RUN.
-Mejor manejo de símbolos y errores para evitar que un símbolo inválido rompa el scanner.
+Exposes:
+- fetch_all_symbols()
+- fetch_ticker(symbol)
+- fetch_ohlcv(symbol, timeframe, limit)  <-- catches common ccxt errors and returns None
+- create_order(symbol, type, side, amount, price=None, params=None)
+- fetch_open_orders(symbol=None)
+- fetch_order(order_id, symbol=None)
+- close()
 """
-import time
 import logging
-from typing import Optional, List, Dict
-import ccxt.async_support as ccxt
+from typing import Optional, Any, List
 
-from config.settings import API_KEY, API_SECRET, USE_TESTNET, DRY_RUN
+import ccxt.async_support as ccxt
+from ccxt.base.errors import BadRequest, ExchangeError, NetworkError, RequestTimeout
 
 logger = logging.getLogger(__name__)
 
-class BinanceClient:
-    def __init__(
-        self,
-        api_key: str = API_KEY,
-        api_secret: str = API_SECRET,
-        use_testnet: bool = USE_TESTNET,
-        dry_run: bool = DRY_RUN
-    ):
-        self.dry_run = dry_run
-        opts = {"defaultType": "future"}
-        # create exchange instance
-        self.exchange = ccxt.binance({
-            "apiKey": api_key,
-            "secret": api_secret,
-            "enableRateLimit": True,
-            "options": opts,
-        })
-        if use_testnet:
-            try:
-                # intenta activar sandbox/testnet (puede no estar disponible en algunas builds)
-                self.exchange.set_sandbox_mode(True)
-                logger.info("Binance sandbox mode enabled")
-            except Exception:
-                logger.warning("Sandbox/testnet mode no disponible en esta build de ccxt")
 
-    # ---------- Market Data ----------
-    async def fetch_ohlcv(self, symbol: str, timeframe: str = "1m", limit: int = 200) -> List:
+class BinanceClient:
+    def __init__(self, api_key: str = None, api_secret: str = None, use_testnet: bool = False, dry_run: bool = False):
+        self.api_key = api_key
+        self.api_secret = api_secret
+        self.use_testnet = use_testnet
+        self.dry_run = dry_run
+        self.exchange = None
+        self._initialized = False
+
+    async def _ensure_exchange(self):
+        if self._initialized and self.exchange:
+            return
+        params = {
+            'apiKey': self.api_key,
+            'secret': self.api_secret,
+            'enableRateLimit': True,
+            'options': {'defaultType': 'future'},
+        }
+        if self.use_testnet:
+            logger.info("Binance sandbox mode enabled")
+            # Best-effort testnet config; adjust as needed for your ccxt version
+            params['urls'] = {
+                'api': {
+                    'public': 'https://testnet.binancefuture.com/fapi/v1',
+                    'private': 'https://testnet.binancefuture.com/fapi/v1',
+                }
+            }
+
+        # instantiate ccxt binance with params
+        self.exchange = ccxt.binance(params)
         try:
-            return await self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=None, limit=limit)
+            if self.use_testnet and hasattr(self.exchange, 'set_sandbox_mode'):
+                self.exchange.set_sandbox_mode(True)
+        except Exception:
+            pass
+
+        try:
+            await self.exchange.load_markets()
         except Exception as e:
-            logger.exception("fetch_ohlcv error for %s: %s", symbol, e)
+            logger.warning("Warning loading markets for BinanceClient: %s", e)
+
+        self._initialized = True
+
+    async def fetch_all_symbols(self) -> List[str]:
+        await self._ensure_exchange()
+        try:
+            markets = self.exchange.markets or {}
+            return list(markets.keys())
+        except Exception as e:
+            logger.warning("fetch_all_symbols failed: %s", e)
             return []
 
     async def fetch_ticker(self, symbol: str) -> Optional[dict]:
+        await self._ensure_exchange()
         try:
             return await self.exchange.fetch_ticker(symbol)
+        except BadRequest as e:
+            logger.warning("fetch_ticker BadRequest for %s: %s", symbol, e)
+            return None
+        except (NetworkError, RequestTimeout) as e:
+            logger.warning("fetch_ticker network/timeout for %s: %s", symbol, e)
+            return None
+        except ExchangeError as e:
+            logger.warning("fetch_ticker ExchangeError for %s: %s", symbol, e)
+            return None
         except Exception as e:
-            # no romper todo si un símbolo no existe o hay error puntual
-            logger.debug("fetch_ticker error for %s: %s", symbol, e)
+            logger.exception("fetch_ticker unexpected error for %s: %s", symbol, e)
             return None
 
-    async def fetch_all_symbols(self) -> List[str]:
+    async def fetch_ohlcv(self, symbol: str, timeframe: str = '1m', since: Optional[int] = None, limit: int = 100):
         """
-        Retorna una lista de símbolos candidatos.
-        Filtra por '/USDT' para concentrarnos en pares cotizados en USDT.
-        No asume que todos esos símbolos estén disponibles en Futuros — la verificación
-        final se hace con fetch_ticker/ohlcv (con manejo de errores).
+        Robust wrapper for fetch_ohlcv. Returns list of OHLCV or None on error.
+        Catches BadRequest (e.g. Binance -1122 Invalid symbol status) and network / exchange errors.
         """
+        await self._ensure_exchange()
         try:
-            markets: Dict[str, dict] = await self.exchange.load_markets()
-            # markets keys son símbolos como "BTC/USDT", "TUSD/USDT", etc.
-            candidates = [sym for sym in markets.keys() if sym.endswith("/USDT")]
-            return candidates
+            ohlcv = await self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=since, limit=limit)
+            if not ohlcv:
+                logger.debug("fetch_ohlcv returned empty for %s %s", symbol, timeframe)
+                return None
+            return ohlcv
+        except BadRequest as e:
+            logger.warning("fetch_ohlcv BadRequest for %s: %s", symbol, e)
+            return None
+        except (NetworkError, RequestTimeout) as e:
+            logger.warning("fetch_ohlcv network/timeout for %s: %s", symbol, e)
+            return None
+        except ExchangeError as e:
+            logger.warning("fetch_ohlcv ExchangeError for %s: %s", symbol, e)
+            return None
         except Exception as e:
-            logger.exception("fetch_all_symbols failed: %s", e)
+            logger.exception("fetch_ohlcv unexpected error for %s: %s", symbol, e)
+            return None
+
+    async def create_order(self, symbol: str, type: str, side: str, amount: float, price: Optional[float] = None, params: Optional[dict] = None) -> Any:
+        await self._ensure_exchange()
+        if self.dry_run:
+            logger.info("DRY RUN create_order %s %s %s @%s qty=%s params=%s", symbol, type, side, price, amount, params)
+            return {
+                "id": "dryrun-" + symbol.replace('/', ''),
+                "symbol": symbol,
+                "type": type,
+                "side": side,
+                "price": price,
+                "amount": amount,
+                "status": "open",
+                "info": {"dry_run": True}
+            }
+        try:
+            return await self.exchange.create_order(symbol, type, side, amount, price, params or {})
+        except Exception as e:
+            logger.exception("create_order failed for %s %s %s %s: %s", symbol, type, side, amount, e)
+            raise
+
+    async def fetch_open_orders(self, symbol: Optional[str] = None) -> List[dict]:
+        await self._ensure_exchange()
+        try:
+            return await self.exchange.fetch_open_orders(symbol)
+        except Exception as e:
+            logger.warning("fetch_open_orders failed for %s: %s", symbol, e)
             return []
 
-    # ---------- Orders ----------
-    async def create_market_order(self, symbol: str, side: str, amount: float) -> dict:
-        if self.dry_run:
-            oid = f"sim-market-{int(time.time()*1000)}"
-            logger.info("DRY_RUN market order simulated: %s %s %f (%s)", symbol, side, amount, oid)
-            return {"id": oid, "status": "closed", "filled": amount, "average": None}
-        try:
-            return await self.exchange.create_order(symbol, "market", side, amount)
-        except Exception as e:
-            logger.exception("create_market_order failed: %s", e)
-            raise
-
-    async def create_limit_order(self, symbol: str, side: str, amount: float, price: float, params: dict = None) -> dict:
-        params = params or {}
-        if self.dry_run:
-            oid = f"sim-limit-{int(time.time()*1000)}"
-            logger.info("DRY_RUN limit order simulated: %s %s %f @ %f (%s)", symbol, side, amount, price, oid)
-            return {"id": oid, "status": "open", "price": price, "amount": amount}
-        try:
-            return await self.exchange.create_order(symbol, "limit", side, amount, price, params)
-        except Exception as e:
-            logger.exception("create_limit_order failed: %s", e)
-            raise
-
-    async def create_oco_order(self, symbol: str, side: str, quantity: float, stop_price: float, take_profit_price: float):
-        """
-        Crea OCO en Binance Futures usando STOP_MARKET + TAKE_PROFIT_LIMIT.
-        Nota: Binance Futures no implementa OCO nativo vía API, por eso se crean 2 órdenes.
-        La implementación es simple: crear TP (limit) y luego StopMarket.
-        """
-        if self.dry_run:
-            oid = f"sim-oco-{int(time.time()*1000)}"
-            logger.info("DRY_RUN OCO simulated: %s %s %f, stop %f, tp %f (%s)",
-                        symbol, side, quantity, stop_price, take_profit_price, oid)
-            return {"id": oid, "status": "open"}
-        try:
-            # Take profit limit (side = same as open side)
-            await self.exchange.create_order(symbol, "LIMIT", side, quantity, take_profit_price)
-            # Stop market (side opposite for triggering on adverse movement)
-            stop_side = "SELL" if side == "BUY" else "BUY"
-            await self.exchange.create_order(symbol, "STOP_MARKET", stop_side, quantity, None, {"stopPrice": stop_price})
-            return {"status": "open"}
-        except Exception as e:
-            logger.exception("create_oco_order failed: %s", e)
-            raise
-
-    async def fetch_order(self, order_id: str, symbol: str = None) -> Optional[dict]:
-        if self.dry_run and order_id.startswith("sim"):
-            if order_id.startswith("sim-market"):
-                return {"id": order_id, "status": "closed", "filled": None}
-            return {"id": order_id, "status": "open"}
+    async def fetch_order(self, order_id: str, symbol: Optional[str] = None) -> Optional[dict]:
+        await self._ensure_exchange()
         try:
             return await self.exchange.fetch_order(order_id, symbol)
         except Exception as e:
-            logger.exception("fetch_order error: %s", e)
+            logger.warning("fetch_order failed for %s (%s): %s", order_id, symbol, e)
             return None
-
-    async def cancel_order(self, order_id: str, symbol: str):
-        if self.dry_run:
-            logger.info("DRY_RUN cancel order %s %s", order_id, symbol)
-            return {"id": order_id, "status": "canceled"}
-        try:
-            return await self.exchange.cancel_order(order_id, symbol)
-        except Exception as e:
-            logger.exception("cancel_order error: %s", e)
-            raise
-
-    async def fetch_balance(self) -> dict:
-        if self.dry_run:
-            return {"USDT": {"free": 10000.0, "used": 0.0, "total": 10000.0}}
-        try:
-            return await self.exchange.fetch_balance(params={"type": "future"})
-        except Exception as e:
-            logger.exception("fetch_balance error: %s", e)
-            return {}
-
-    async def get_balance_usdt(self) -> float:
-        bal = await self.fetch_balance()
-        try:
-            # ccxt futures balance shape suele tener 'USDT' key
-            return float(bal.get("USDT", {}).get("free", 0.0) if isinstance(bal, dict) else 0.0)
-        except Exception:
-            return 0.0
 
     async def close(self):
         try:
-            await self.exchange.close()
+            if self.exchange:
+                await self.exchange.close()
         except Exception:
-            pass
+            logger.debug("Error closing exchange client", exc_info=True)
