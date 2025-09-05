@@ -82,31 +82,39 @@ class CryptoBot:
             # no relanzamos la excepción para no romper loops
 
     async def actualizar_watchlist(self):
-        """Construye watchlist solo con símbolos USDT contract y en estado TRADING/active.
-        Usa fetch_markets para validar metadatos en lugar de asumir todos los símbolos válidos."""
+        """
+        Construye watchlist usando fetch_all_symbols (compatible con BinanceClient que tienes).
+        - Filtra por símbolos que terminen en '/USDT' (heurística para mercado USDT-M).
+        - Evita símbolos que al consultar OHLCV/ticker devuelvan errores (p.ej. Invalid symbol status).
+        - Notifica una sola vez la actualización.
+        """
         try:
-            markets = await self.exchange.fetch_markets()
+            # Muchos clientes custom exponen fetch_all_symbols (lo usabas anteriormente)
+            all_symbols = await self.exchange.fetch_all_symbols()
             candidates: List[str] = []
-            for m in markets:
+
+            for sym in all_symbols:
+                # heurística mínima: solo pares contra USDT (evita monedas como BNB/ETH o pares margin)
                 try:
-                    symbol = m.get("symbol")
-                    quote = m.get("quote") or m.get("info", {}).get("quoteAsset")
-                    active = m.get("active", True)
-                    is_contract = m.get("contract") or (m.get("type") == "future") or ("contractType" in m.get("info", {}))
-                    status = m.get("info", {}).get("status", "").upper()
-                    if not symbol or quote != "USDT" or not active or not is_contract or (status and status != "TRADING"):
+                    if not isinstance(sym, str):
                         continue
-                    candidates.append(symbol)
+                    if not sym.upper().endswith("/USDT"):
+                        continue
+                    # evita símbolos sospechosos (canal de futuros suele ser NAME/USDT)
+                    # agrega al candidato; haremos validaciones más profundas abajo
+                    candidates.append(sym)
                 except Exception:
                     continue
 
             filtered = []
             for sym in candidates:
                 try:
+                    # comprobar ticker primero (rápido)
                     ticker = await self.exchange.fetch_ticker(sym)
                     if not ticker:
                         continue
                     vol = float(ticker.get("quoteVolume") or ticker.get("info", {}).get("quoteVolume") or 0)
+                    # obtener OHLCV para calcular ATR y price
                     ohlcv = await self.exchange.fetch_ohlcv(sym, timeframe=TIMEFRAME_TENDENCIA, limit=50)
                     if not ohlcv:
                         continue
@@ -116,20 +124,28 @@ class CryptoBot:
                         continue
                     atr = AverageTrueRange(df['high'], df['low'], df['close'], window=14).average_true_range().iloc[-1]
                     atr_rel = atr / price
+                    # filtros de liquidez / volatilidad
                     if vol < 50_000_000 or price <= 0 or atr_rel < 0.005:
                         continue
                     filtered.append((sym, vol))
                 except Exception as e:
+                    # Si el exchange devuelve que el símbolo está inválido o no es negociable, simplemente ignóralo.
                     msg = str(e)
                     if "Invalid symbol status" in msg or "Invalid symbol" in msg:
                         logger.info("Symbol %s tiene estado inválido, se ignorará: %s", sym, msg)
                         continue
+                    # otros errores: registrar y seguir
+                    logger.debug("Error validando símbolo %s: %s", sym, e)
                     continue
 
             filtered.sort(key=lambda x: x[1], reverse=True)
             global WATCHLIST_DINAMICA
             WATCHLIST_DINAMICA = [x[0] for x in filtered[:MAX_ACTIVE_SYMBOLS]]
             await self.safe_send_telegram(f"📊 Watchlist actualizada: {WATCHLIST_DINAMICA}")
+        except AttributeError as e:
+            # Manejo explícito si BinanceClient no implementa fetch_all_symbols
+            logger.error("fetch_all_symbols no disponible en exchange client: %s", e)
+            await self.safe_send_telegram("❌ Error actualizando watchlist: fetch_all_symbols no disponible en el cliente exchange")
         except Exception as e:
             await self.safe_send_telegram(f"❌ Error actualizando watchlist: {e}")
 
@@ -250,6 +266,7 @@ class CryptoBot:
                 await asyncio.gather(*tasks, return_exceptions=True)
             await asyncio.sleep(1)
 
+
 async def periodic_report(bot):
     while True:
         try:
@@ -266,18 +283,45 @@ async def periodic_report(bot):
         except Exception as e:
             await bot.safe_send_telegram(f"❌ Error en reporte horario: {e}")
 
+
 async def monitor_positions(bot):
+    """
+    Monitor con compatibilidad hacia varias implementaciones de StateManager:
+    - Si StateManager implementa check_positions_closed(), se usa.
+    - Si implementa get_closed_positions(), se usa.
+    - Si no hay método, no hace nada (fallback seguro).
+    """
     while True:
         try:
-            closed_positions = bot.state.check_positions_closed()
+            closed_positions = []
+            # preferencia: check_positions_closed (tu implementación previa esperaba esto)
+            if hasattr(bot.state, "check_positions_closed") and callable(getattr(bot.state, "check_positions_closed")):
+                closed_positions = bot.state.check_positions_closed()
+            elif hasattr(bot.state, "get_closed_positions") and callable(getattr(bot.state, "get_closed_positions")):
+                closed_positions = bot.state.get_closed_positions()
+            else:
+                # Fallback: quizás StateManager registra eventos en una lista 'closed_positions_history'
+                if hasattr(bot.state, "closed_positions_history"):
+                    closed_positions = getattr(bot.state, "closed_positions_history")
+                else:
+                    # Si no hay nada, evitamos lanzar excepción y simplemente saltamos
+                    closed_positions = []
+
             for pos in closed_positions:
-                sym = pos["symbol"]
-                pnl = pos["pnl"]
-                reason = pos["reason"]
-                await bot.safe_send_telegram(f"📉 {sym} cerrada por {reason}. PnL: {pnl:.2f} USDT")
+                # soporte flexible para estructuras de posición
+                try:
+                    sym = pos.get("symbol") if isinstance(pos, dict) else pos["symbol"]
+                    pnl = pos.get("pnl", 0.0) if isinstance(pos, dict) else pos.get("pnl", 0.0)
+                    reason = pos.get("reason", "unknown") if isinstance(pos, dict) else pos.get("reason", "unknown")
+                    await bot.safe_send_telegram(f"📉 {sym} cerrada por {reason}. PnL: {pnl:.2f} USDT")
+                except Exception:
+                    # Si la estructura es distinta, loguea y continúa
+                    logger.debug("Posición cerrada con formato inesperado: %s", pos)
+                    continue
         except Exception as e:
             await bot.safe_send_telegram(f"❌ Error monitor_positions: {e}")
         await asyncio.sleep(5)
+
 
 async def watchdog_loop(bot):
     while True:
@@ -287,6 +331,7 @@ async def watchdog_loop(bot):
                 await bot.safe_send_telegram("⚠️ Alert: posible bloqueo del bot")
         except Exception as e:
             await bot.safe_send_telegram(f"❌ Error watchdog: {e}")
+
 
 async def main():
     bot = CryptoBot()
