@@ -7,6 +7,7 @@ Incluye monitor de cierres de posiciones y watchdog para alertas de fallas.
 
 Modificación: entrada SOLO con órdenes LIMIT y SL/TP configuradas como stop-limit / take-profit-limit.
 Se añadió fallback robusto cuando el cliente exchange devuelve errores (símbolos inválidos).
+Fix: incluye futuros delivery/perpetuos en watchlist.
 """
 import asyncio
 import logging
@@ -60,8 +61,6 @@ class CryptoBot:
         self._recent_telegram_disabled = False
 
     async def safe_send_telegram(self, msg: str):
-        """Envía mensaje a Telegram, corta si demasiado largo.
-        Añade protección contra fallos repetidos (400) para evitar spam de errores."""
         try:
             if getattr(self, "_recent_telegram_disabled", False):
                 logger.warning("Telegram disabled due to repeated failures; skipping message")
@@ -71,10 +70,8 @@ class CryptoBot:
                     await self.telegram.send_message(msg[i:i+TELEGRAM_MSG_MAX])
             else:
                 await self.telegram.send_message(msg)
-            # envío exitoso -> reset contador
             self._telegram_fail_count = 0
         except Exception as e:
-            # registrar excepción completa en logs para diagnóstico
             logger.warning("Telegram message failed: %s", e)
             self._telegram_fail_count = getattr(self, "_telegram_fail_count", 0) + 1
             if self._telegram_fail_count >= getattr(self, "_telegram_fail_threshold", 5):
@@ -83,23 +80,20 @@ class CryptoBot:
                     self._telegram_fail_count
                 )
                 self._recent_telegram_disabled = True
-            # no relanzamos la excepción para no romper loops
 
     async def actualizar_watchlist(self):
-        """
-        Construye watchlist usando fetch_all_symbols (compatible con BinanceClient).
-        - Filtra por símbolos que terminen en '/USDT'
-        - Evita símbolos que devuelvan errores al pedir OHLCV/ticker (serán ignorados)
-        """
         try:
             all_symbols = await self.exchange.fetch_all_symbols()
+            logger.info("Símbolos detectados en exchange: %s", all_symbols)
             candidates: List[str] = []
 
             for sym in all_symbols:
                 try:
                     if not isinstance(sym, str):
                         continue
-                    if not sym.upper().endswith("/USDT"):
+                    # FIX: acepta perpetuos y delivery
+                    base_sym = sym.upper().split(":")[0]
+                    if not base_sym.endswith("/USDT"):
                         continue
                     candidates.append(sym)
                 except Exception:
@@ -135,6 +129,7 @@ class CryptoBot:
             filtered.sort(key=lambda x: x[1], reverse=True)
             global WATCHLIST_DINAMICA
             WATCHLIST_DINAMICA = [x[0] for x in filtered[:MAX_ACTIVE_SYMBOLS]]
+            logger.info("Watchlist final: %s", WATCHLIST_DINAMICA)
             await self.safe_send_telegram(f"📊 Watchlist actualizada: {WATCHLIST_DINAMICA}")
         except Exception as e:
             await self.safe_send_telegram(f"❌ Error actualizando watchlist: {e}")
@@ -174,13 +169,6 @@ class CryptoBot:
     async def _create_bracket_order(self, symbol: str, side: str, quantity: float,
                                     entry_price: float, stop_price: float, take_profit_price: float,
                                     wait_timeout: int = 30) -> Tuple[Optional[Any], Optional[Any], Optional[Any]]:
-        """
-        Limit-only flow:
-        - Create LIMIT entry order (GTC).
-        - Create stop-limit (SL) and take-profit-limit (TP) orders using common variants.
-        Note: Limit entry may not fill immediately. Ensure monitor/reconciler is enabled to track fills.
-        """
-        # If client has native create_bracket_order, try it first
         if hasattr(self.exchange, "create_bracket_order") and callable(getattr(self.exchange, "create_bracket_order")):
             try:
                 return await self.exchange.create_bracket_order(
@@ -195,12 +183,9 @@ class CryptoBot:
             except Exception as e:
                 logger.warning("create_bracket_order del cliente falló: %s — intentando fallback limit-only", e)
 
-        entry_order = None
-        stop_order = None
-        tp_order = None
+        entry_order = stop_order = tp_order = None
         close_side = "SELL" if side.upper() == "BUY" else "BUY"
 
-        # 1) Create entry as LIMIT only
         try:
             params_entry = {"timeInForce": "GTC"}
             entry_order = await self.exchange.create_order(symbol, 'limit', side, quantity, entry_price, params_entry)
@@ -209,7 +194,6 @@ class CryptoBot:
             logger.error("No se pudo crear la orden LIMIT de entrada para %s a %s: %s", symbol, entry_price, e)
             raise Exception(f"No se pudo crear orden LIMIT de entrada para {symbol}: {e}") from e
 
-        # 2) SL stop-limit (attempt common variants)
         try:
             params_sl = {"stopPrice": stop_price, "reduceOnly": True, "timeInForce": "GTC"}
             try:
@@ -221,7 +205,6 @@ class CryptoBot:
             logger.warning("Crear SL (stop-limit) falló para %s: %s", symbol, e)
             stop_order = None
 
-        # 3) TP take-profit-limit (attempt common variants)
         try:
             params_tp = {"stopPrice": take_profit_price, "reduceOnly": True, "timeInForce": "GTC"}
             try:
@@ -249,7 +232,6 @@ class CryptoBot:
             await self.safe_send_telegram(f"❌ Error obteniendo precio para {sym}: {e}")
             return
 
-        # Excepción SOL/USDT para abrir orden mínima
         min_notional = MIN_NOTIONAL_USD
         if sym == "SOL/USDT":
             min_notional = min(MIN_NOTIONAL_USD, 5)
@@ -267,7 +249,6 @@ class CryptoBot:
                 quantity = min_notional / price
                 notional = min_notional
 
-        # Aplicar leverage
         quantity *= LEVERAGE
 
         if signal == "long":
@@ -294,7 +275,6 @@ class CryptoBot:
                 wait_timeout=30
             )
             if entry_order:
-                # register_open_position expects notional based on pre-leverage amount in previous design
                 self.state.register_open_position(sym, signal, entry, (quantity / LEVERAGE) * price, sl, tp)
                 await self.safe_send_telegram(
                     f"✅ {sym} {signal.upper()} LIMIT creado @ {entry:.2f} USDT\nSL {sl:.2f} | TP {tp:.2f} | Qty {quantity:.6f}"
@@ -343,12 +323,6 @@ async def periodic_report(bot):
 
 
 async def monitor_positions(bot):
-    """
-    Monitor flexible que:
-    - pregunta a StateManager por posiciones cerradas (métodos check_positions_closed/get_closed_positions/closed_positions_history)
-    - y notifica cierres
-    Nota: idealmente añadir reconciliador que inspeccione fetch_open_orders/fetch_order y actualice state.
-    """
     while True:
         try:
             closed_positions = []
