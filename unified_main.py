@@ -44,7 +44,7 @@ class CryptoBot:
     def __init__(self):
         self.exchange = BinanceClient(
             api_key=API_KEY, api_secret=API_SECRET,
-            use_testnet=USETESTNET, dry_run=False
+            use_testnet=USE_TESTNET, dry_run=False
         )
         self.telegram = TelegramNotifier(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
         self.state = StateManager(daily_profit_target=DAILY_PROFIT_TARGET)
