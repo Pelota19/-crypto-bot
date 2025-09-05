@@ -1,16 +1,11 @@
 """
 Unified CryptoBot - Binance Futures (USDT-M) - FULL SCAN (sin watchlist)
 
-Esta versión (v3 merged) incluye:
-- Creación de órdenes LIMIT de entrada con SL/TP (fallback a STOP_MARKET / TAKE_PROFIT_MARKET cuando el exchange no acepta stop_limit / take_profit_limit).
-- Inyección de positionSide (LONG/SHORT) cuando HEDGE_MODE=True.
-- Confirmación por Telegram tras crear la bracket (indica si Entry/SL/TP se crearon).
-- Monitor mejorado de fills que:
-  - detecta ejecución parcial/total de la entry y actualiza entry_avg/entry_filled,
-  - detecta ejecución de SL o TP, calcula PnL NETO usando trades (cuando están disponibles) o fallback aproximado,
-  - cancela la orden opuesta y registra el cierre en StateManager,
-  - notifica por Telegram el cierre con PnL y razón (SL/TP).
-- Usa TelegramNotifier con rate limiting / manejo 429 (cola asíncrona).
+Versión con un único punto de notificación:
+- monitor_order_fills es el único que envía mensajes a Telegram para:
+  * ejecución de entry (parciales/total)
+  * cierres por SL o TP (notifica PnL, intenta PnL neto con trades)
+- monitor_positions ya NO envía notificaciones para evitar duplicados.
 """
 
 import asyncio
@@ -49,6 +44,7 @@ PCT_CHANGE_24H = float(getenv("PCT_CHANGE_24H", "10.0"))  # 10% por defecto, con
 
 # Telegram rate limit (mensajes por minuto) - ajustable por .env si lo deseas
 TELEGRAM_RATE_PER_MIN = int(getenv("TELEGRAM_RATE_PER_MIN", "30"))
+
 
 class CryptoBot:
     def __init__(self):
@@ -270,7 +266,7 @@ class CryptoBot:
             await asyncio.sleep(1)
 
     # --------------------
-    # Monitor para detectar ejecución de SL/TP y notificar con PnL (mejorado)
+    # Monitor para detectar ejecución de SL/TP y notificar con PnL (único punto de notificación)
     # --------------------
     async def monitor_order_fills(self, poll_interval: float = 2.0):
         """
@@ -279,20 +275,9 @@ class CryptoBot:
          - cuando SL/TP se ejecuta (filled > 0) calcula PnL NETO usando trades (si se pueden obtener)
            y como fallback usa avg * qty aproximado.
          - cancela la orden opuesta y registra el cierre
-         - notifica por Telegram el cierre con PnL y razón
+         - notifica por Telegram (único punto de notificación)
         """
         async def _compute_pnl_from_trades(side: str, entry_order_id: Optional[str], close_order_id: str, sym: str):
-            """
-            Intenta calcular PnL neto usando trades asociados a los order ids.
-            Retorna (pnl, details_dict) o (None, None) si no pudo.
-            Método:
-              - obtiene trades de la entry y del close
-              - suma amount, cost y fees
-              - compara cantidades (usa min_qty como qty cerrada)
-              - para long: pnl = close_cost - entry_cost - fees_total
-                for short: pnl = entry_cost - close_cost - fees_total
-              - devuelve pnl y un dict con breakdown
-            """
             try:
                 entry_trades = []
                 if entry_order_id:
@@ -322,10 +307,8 @@ class CryptoBot:
                 entry_summary = _sum_trades(entry_trades) if entry_trades else {"amount": 0.0, "cost": 0.0, "fees": 0.0}
                 close_summary = _sum_trades(close_trades)
 
-                # cantidad cerrada = min(entry_amount, close_amount) si entry trades existen, else use close_amount
                 if entry_summary["amount"] > 0:
                     qty_closed = min(entry_summary["amount"], close_summary["amount"])
-                    # proporcionales
                     entry_cost_for_qty = (entry_summary["cost"] / entry_summary["amount"]) * qty_closed if entry_summary["amount"] else 0.0
                     close_cost_for_qty = (close_summary["cost"] / close_summary["amount"]) * qty_closed if close_summary["amount"] else 0.0
                     fees_for_qty = (entry_summary["fees"] / entry_summary["amount"]) * qty_closed if entry_summary["amount"] else 0.0
@@ -342,7 +325,6 @@ class CryptoBot:
                 if side == "long":
                     pnl = close_cost_for_qty - entry_cost_for_qty - fees_for_qty
                 else:
-                    # short: entry produces proceeds, close consumes cost
                     pnl = entry_cost_for_qty - close_cost_for_qty - fees_for_qty
 
                 details = {
@@ -413,17 +395,16 @@ class CryptoBot:
                             pnl = None
 
                         # Si no se pudo calcular con trades, fallback al cálculo aproximado
+                        close_price = avg or order.get("price") or pos.get("sl") or pos.get("tp")
                         if pnl is None:
                             try:
                                 entry_used = float(pos.get("entry_avg") or pos.get("entry") or 0.0)
-                                close_price = avg or order.get("price") or pos.get("sl") or pos.get("tp")
                                 if side == "long":
                                     pnl = (float(close_price) - entry_used) * filled
                                 else:
                                     pnl = (entry_used - float(close_price)) * filled
                             except Exception:
                                 pnl = 0.0
-                                close_price = avg or order.get("price") or pos.get("sl") or pos.get("tp")
 
                         # registrar y notificar
                         self.state.register_closed_position(sym, pnl, reason_label, close_price=(avg or order.get("price")), close_order_id=order_id)
@@ -444,9 +425,9 @@ class CryptoBot:
                             )
                         else:
                             if reason_label == "TP":
-                                await self.safe_send_telegram(f"🏁 {sym} cerrada por TP. PnL: {pnl:.2f} USDT | Qty: {filled:.6f} | Entry {pos.get('entry_avg') or pos.get('entry'):.6f} -> Close {avg or order.get('price')}")
+                                await self.safe_send_telegram(f"🏁 {sym} cerrada por TP. PnL: {pnl:.2f} USDT | Qty: {filled:.6f} | Entry {pos.get('entry_avg') or pos.get('entry'):.6f} -> Close {close_price}")
                             else:
-                                await self.safe_send_telegram(f"🔒 {sym} cerrada por SL. PnL: {pnl:.2f} USDT | Qty: {filled:.6f} | Entry {pos.get('entry_avg') or pos.get('entry'):.6f} -> Close {avg or order.get('price')}")
+                                await self.safe_send_telegram(f"🔒 {sym} cerrada por SL. PnL: {pnl:.2f} USDT | Qty: {filled:.6f} | Entry {pos.get('entry_avg') or pos.get('entry'):.6f} -> Close {close_price}")
                         return True
 
                     # 2) Procesar SL primero, luego TP
@@ -485,17 +466,21 @@ async def periodic_report(bot: CryptoBot):
         )
 
 async def monitor_positions(bot: CryptoBot):
+    """
+    Esta función ya NO envía notificaciones para evitar duplicados.
+    La dejamos para mantener la estructura del programa; puede usarse para limpieza
+    o persistencia futura de closed_positions_history.
+    """
     while True:
-        closed_positions = getattr(bot.state, "closed_positions_history", [])
-        for pos in closed_positions or []:
-            try:
-                sym = pos.get("symbol")
-                pnl = pos.get("pnl", 0.0)
-                reason = pos.get("reason", "unknown")
-                await bot.safe_send_telegram(f"📉 {sym} cerrada por {reason}. PnL: {pnl:.2f} USDT")
-            except Exception:
-                continue
-        await asyncio.sleep(5)
+        try:
+            # opcional: limpiar closed_positions_history muy antiguas o solo registrar/log
+            # por ahora: solo sleep y log ocasional
+            await asyncio.sleep(60)
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            logger.exception("Error en monitor_positions")
+            await asyncio.sleep(5)
 
 async def watchdog_loop(bot: CryptoBot):
     while True:
@@ -508,12 +493,12 @@ async def main():
     bot = CryptoBot()
     tasks = []
     try:
-        await bot.safe_send_telegram("🚀 CryptoBot iniciado en TESTNET (limit-only orders, full-scan PERPETUAL USDT-M)")
+        await bot.safe_send_telegram("🚀 CryptoBot iniciado en TESTNET (limit-only orders, full-scan PERPETUAL USDT-M) - notifications centralized")
         tasks.append(asyncio.create_task(symbols_refresher(bot)))
         tasks.append(asyncio.create_task(periodic_report(bot)))
-        tasks.append(asyncio.create_task(monitor_positions(bot)))
+        # no añadimos monitor_positions como fuente de notificaciones
         tasks.append(asyncio.create_task(watchdog_loop(bot)))
-        # monitor de fills
+        # monitor de fills (única fuente de notificaciones)
         tasks.append(asyncio.create_task(bot.monitor_order_fills()))
         await bot.run_trading_loop()
     except KeyboardInterrupt:
