@@ -1,13 +1,13 @@
 """
 Unified CryptoBot - Binance Futures (USDT-M) - FULL SCAN (sin watchlist)
 
-Esta versión (v3 merged with v2) incluye:
+Esta versión (v3 merged) incluye:
 - Creación de órdenes LIMIT de entrada con SL/TP (fallback a STOP_MARKET / TAKE_PROFIT_MARKET cuando el exchange no acepta stop_limit / take_profit_limit).
 - Inyección de positionSide (LONG/SHORT) cuando HEDGE_MODE=True.
 - Confirmación por Telegram tras crear la bracket (indica si Entry/SL/TP se crearon).
 - Monitor mejorado de fills que:
   - detecta ejecución parcial/total de la entry y actualiza entry_avg/entry_filled,
-  - detecta ejecución de SL o TP, calcula PnL usando avg y cantidad ejecutada,
+  - detecta ejecución de SL o TP, calcula PnL NETO usando trades (cuando están disponibles) o fallback aproximado,
   - cancela la orden opuesta y registra el cierre en StateManager,
   - notifica por Telegram el cierre con PnL y razón (SL/TP).
 - Usa TelegramNotifier con rate limiting / manejo 429 (cola asíncrona).
@@ -50,7 +50,6 @@ PCT_CHANGE_24H = float(getenv("PCT_CHANGE_24H", "10.0"))  # 10% por defecto, con
 # Telegram rate limit (mensajes por minuto) - ajustable por .env si lo deseas
 TELEGRAM_RATE_PER_MIN = int(getenv("TELEGRAM_RATE_PER_MIN", "30"))
 
-
 class CryptoBot:
     def __init__(self):
         # Exchange client
@@ -65,7 +64,7 @@ class CryptoBot:
         self._stop_event = asyncio.Event()
         self.last_loop_heartbeat = datetime.now(timezone.utc)
         self.symbols: List[str] = []
-        # Internal small guard not necessary for notifier (not used further)
+        # Internal small guard
         self._recent_telegram_disabled = False
 
     async def safe_send_telegram(self, msg: str):
@@ -74,14 +73,12 @@ class CryptoBot:
         El TelegramNotifier se encarga del rate limit y del manejo de 429.
         """
         try:
-            # Asegurarse mensaje no demasiado largo para Telegram
             if len(msg) <= TELEGRAM_MSG_MAX:
                 await self.telegram.send_message(msg)
             else:
                 for i in range(0, len(msg), TELEGRAM_MSG_MAX):
                     await self.telegram.send_message(msg[i:i+TELEGRAM_MSG_MAX])
         except Exception as e:
-            # En teoría TelegramNotifier no debería lanzar, pero lo protegemos
             logger.warning("Telegram message enqueue failed: %s", e)
 
     async def refresh_symbols(self):
@@ -279,10 +276,88 @@ class CryptoBot:
         """
         Maneja entry fills, partial fills y cierres por SL/TP:
          - actualiza entry_avg/entry_filled cuando la entry se ejecuta (parcial o total)
-         - cuando SL/TP se ejecuta (filled > 0) calcula PnL usando avg y cantidad ejecutada
+         - cuando SL/TP se ejecuta (filled > 0) calcula PnL NETO usando trades (si se pueden obtener)
+           y como fallback usa avg * qty aproximado.
          - cancela la orden opuesta y registra el cierre
          - notifica por Telegram el cierre con PnL y razón
         """
+        async def _compute_pnl_from_trades(side: str, entry_order_id: Optional[str], close_order_id: str, sym: str):
+            """
+            Intenta calcular PnL neto usando trades asociados a los order ids.
+            Retorna (pnl, details_dict) o (None, None) si no pudo.
+            Método:
+              - obtiene trades de la entry y del close
+              - suma amount, cost y fees
+              - compara cantidades (usa min_qty como qty cerrada)
+              - para long: pnl = close_cost - entry_cost - fees_total
+                for short: pnl = entry_cost - close_cost - fees_total
+              - devuelve pnl y un dict con breakdown
+            """
+            try:
+                entry_trades = []
+                if entry_order_id:
+                    entry_trades = await self.exchange.fetch_trades_for_order(entry_order_id, sym)
+                close_trades = await self.exchange.fetch_trades_for_order(close_order_id, sym)
+
+                if not close_trades:
+                    return None, None
+
+                def _sum_trades(trades):
+                    total_amount = 0.0
+                    total_cost = 0.0
+                    total_fees = 0.0
+                    for t in trades:
+                        amt = float(t.get("amount") or t.get("info", {}).get("executedQty") or 0.0)
+                        cost = float(t.get("cost") or (float(t.get("price") or 0.0) * amt))
+                        fee = 0.0
+                        try:
+                            fee = float((t.get("fee") or {}).get("cost") or t.get("info", {}).get("commission") or 0.0)
+                        except Exception:
+                            fee = 0.0
+                        total_amount += amt
+                        total_cost += cost
+                        total_fees += fee
+                    return {"amount": total_amount, "cost": total_cost, "fees": total_fees}
+
+                entry_summary = _sum_trades(entry_trades) if entry_trades else {"amount": 0.0, "cost": 0.0, "fees": 0.0}
+                close_summary = _sum_trades(close_trades)
+
+                # cantidad cerrada = min(entry_amount, close_amount) si entry trades existen, else use close_amount
+                if entry_summary["amount"] > 0:
+                    qty_closed = min(entry_summary["amount"], close_summary["amount"])
+                    # proporcionales
+                    entry_cost_for_qty = (entry_summary["cost"] / entry_summary["amount"]) * qty_closed if entry_summary["amount"] else 0.0
+                    close_cost_for_qty = (close_summary["cost"] / close_summary["amount"]) * qty_closed if close_summary["amount"] else 0.0
+                    fees_for_qty = (entry_summary["fees"] / entry_summary["amount"]) * qty_closed if entry_summary["amount"] else 0.0
+                    fees_for_qty += (close_summary["fees"] / close_summary["amount"]) * qty_closed if close_summary["amount"] else 0.0
+                else:
+                    qty_closed = close_summary["amount"]
+                    entry_cost_for_qty = entry_summary["cost"]
+                    close_cost_for_qty = close_summary["cost"]
+                    fees_for_qty = entry_summary["fees"] + close_summary["fees"]
+
+                if qty_closed <= 0:
+                    return None, None
+
+                if side == "long":
+                    pnl = close_cost_for_qty - entry_cost_for_qty - fees_for_qty
+                else:
+                    # short: entry produces proceeds, close consumes cost
+                    pnl = entry_cost_for_qty - close_cost_for_qty - fees_for_qty
+
+                details = {
+                    "qty_closed": qty_closed,
+                    "entry_cost": entry_cost_for_qty,
+                    "close_cost": close_cost_for_qty,
+                    "fees": fees_for_qty,
+                    "entry_trades": entry_trades,
+                    "close_trades": close_trades,
+                }
+                return pnl, details
+            except Exception as e:
+                logger.exception("Error computing pnl from trades for %s %s %s: %s", sym, entry_order_id, close_order_id, e)
+                return None, None
+
         while True:
             try:
                 open_positions = self.state.get_open_positions().copy()
@@ -291,10 +366,9 @@ class CryptoBot:
                     sl_id = pos.get("sl_order_id")
                     tp_id = pos.get("tp_order_id")
                     side = pos.get("side")  # "long" | "short"
-                    intended_qty = float(pos.get("quantity", 0.0))
                     entry_price = float(pos.get("entry") or 0.0)
-                    entry_avg = pos.get("entry_avg")  # puede ser None
-                    entry_filled = float(pos.get("entry_filled", 0.0))
+                    entry_avg = pos.get("entry_avg")
+                    entry_filled = float(pos.get("entry_filled") or 0.0)
                     closed_flag = pos.get("closed", False)
                     if closed_flag:
                         continue
@@ -310,12 +384,9 @@ class CryptoBot:
                             except Exception:
                                 avg = None
                             if filled and filled != entry_filled:
-                                pos["entry_filled"] = filled
-                                pos["entry_avg"] = avg or entry_price
-                                pos["quantity"] = filled
-                                self.state.open_positions[sym] = pos
-                                logger.info("Entry filled update %s: filled=%s avg=%s", sym, filled, avg)
-                                await self.safe_send_telegram(f"✳️ {sym} ENTRY ejecutada {side.upper()} qty={filled:.6f} avg={pos['entry_avg']:.6f}")
+                                # actualizar state via helper
+                                self.state.update_entry_execution(sym, filled, avg or entry_price)
+                                await self.safe_send_telegram(f"✳️ {sym} ENTRY ejecutada {side.upper()} qty={filled:.6f} avg={avg or entry_price:.6f}")
 
                     # Helper para procesar un order id (SL o TP)
                     async def _process_close_order(order_id, reason_label):
@@ -332,20 +403,30 @@ class CryptoBot:
                             avg = None
                         if filled <= 0:
                             return False
-                        # cantidad cerrada
-                        qty_closed = filled
-                        entry_used = float(pos.get("entry_avg") or pos.get("entry") or 0.0)
-                        pnl = 0.0
+
+                        # Intentar PnL exacto via trades
+                        pnl = None
+                        pnl_details = None
                         try:
-                            close_price = avg or order.get("price") or pos.get("sl") or pos.get("tp")
-                            if side == "long":
-                                pnl = (float(close_price) - entry_used) * qty_closed
-                            else:
-                                pnl = (entry_used - float(close_price)) * qty_closed
+                            pnl, pnl_details = await _compute_pnl_from_trades(side, entry_id, order_id, sym)
                         except Exception:
-                            pnl = 0.0
+                            pnl = None
+
+                        # Si no se pudo calcular con trades, fallback al cálculo aproximado
+                        if pnl is None:
+                            try:
+                                entry_used = float(pos.get("entry_avg") or pos.get("entry") or 0.0)
+                                close_price = avg or order.get("price") or pos.get("sl") or pos.get("tp")
+                                if side == "long":
+                                    pnl = (float(close_price) - entry_used) * filled
+                                else:
+                                    pnl = (entry_used - float(close_price)) * filled
+                            except Exception:
+                                pnl = 0.0
+                                close_price = avg or order.get("price") or pos.get("sl") or pos.get("tp")
+
                         # registrar y notificar
-                        self.state.register_closed_position(sym, pnl, reason_label, close_price=close_price, close_order_id=order_id)
+                        self.state.register_closed_position(sym, pnl, reason_label, close_price=(avg or order.get("price")), close_order_id=order_id)
                         # cancelar opuesta
                         opp_id = pos.get("tp_order_id") if reason_label == "SL" else pos.get("sl_order_id")
                         if opp_id:
@@ -356,11 +437,16 @@ class CryptoBot:
                         # marcar cerrada
                         pos["closed"] = True
                         self.state.open_positions.pop(sym, None)
-                        # Notificar
-                        if reason_label == "TP":
-                            await self.safe_send_telegram(f"🏁 {sym} cerrada por TP. PnL: {pnl:.2f} USDT | Qty: {qty_closed:.6f} | Entry {entry_used:.6f} -> Close {close_price}")
+                        # Notificar: incluir detalle si existe
+                        if pnl_details:
+                            await self.safe_send_telegram(
+                                f"🏁 {sym} cerrada por {reason_label}. PnL: {pnl:.2f} USDT | Qty: {pnl_details.get('qty_closed', 0.0):.6f} | Entry cost {pnl_details.get('entry_cost', 0.0):.6f} -> Close cost {pnl_details.get('close_cost', 0.0):.6f} | Fees {pnl_details.get('fees', 0.0):.6f}"
+                            )
                         else:
-                            await self.safe_send_telegram(f"🔒 {sym} cerrada por SL. PnL: {pnl:.2f} USDT | Qty: {qty_closed:.6f} | Entry {entry_used:.6f} -> Close {close_price}")
+                            if reason_label == "TP":
+                                await self.safe_send_telegram(f"🏁 {sym} cerrada por TP. PnL: {pnl:.2f} USDT | Qty: {filled:.6f} | Entry {pos.get('entry_avg') or pos.get('entry'):.6f} -> Close {avg or order.get('price')}")
+                            else:
+                                await self.safe_send_telegram(f"🔒 {sym} cerrada por SL. PnL: {pnl:.2f} USDT | Qty: {filled:.6f} | Entry {pos.get('entry_avg') or pos.get('entry'):.6f} -> Close {avg or order.get('price')}")
                         return True
 
                     # 2) Procesar SL primero, luego TP
