@@ -44,7 +44,6 @@ class TelegramNotifier:
 
         try:
             async with self._session.post(url, json=payload, timeout=10) as resp:
-                # Intentamos parsear respuesta JSON (Telegram siempre devuelve JSON salvo error de conexión)
                 try:
                     data = await resp.json()
                 except Exception:
@@ -57,7 +56,6 @@ class TelegramNotifier:
                         logger.error("TelegramNotifier disabling after %d consecutive failures", self._fail_count)
                         self._disabled = True
                     raise Exception(f"Telegram API error {resp.status}: {desc}")
-                # éxito
                 self._fail_count = 0
                 return data
 
@@ -69,7 +67,6 @@ class TelegramNotifier:
                 self._disabled = True
             raise
         except Exception as e:
-            # cualquier otra excepción (conexión, DNS, etc.)
             logger.warning("Telegram send_message failed: %s", e)
             self._fail_count += 1
             if self._fail_count >= self._fail_threshold:
@@ -80,7 +77,7 @@ class TelegramNotifier:
     async def close(self):
         """Cerrar sesión aiohttp"""
         try:
-            if not self._session.closed:
+            if self._session and not self._session.closed:
                 await self._session.close()
         except Exception:
             logger.debug("Error closing TelegramNotifier session", exc_info=True)
