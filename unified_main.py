@@ -5,6 +5,7 @@ Estrategia: Scalping EMA/RSI con órdenes LIMIT + SL/TP limit.
 - Refresca la lista de símbolos cada 15 minutos.
 - Notifica por Telegram.
 - Solo ejecuta trades si el cambio en las últimas 24h supera ±PCT_CHANGE_24H (configurable .env)
+*** PARCHE: Adaptado para operar en HEDGE MODE ***
 """
 
 import asyncio
@@ -38,12 +39,10 @@ MAX_OPERATIONS_SIMULTANEAS = MAX_OPEN_TRADES
 MAX_TRADE_USDT = 50                   # tope por trade
 REFRESH_SYMBOLS_MINUTES = 15          # refresh cada 15 min
 TELEGRAM_MSG_MAX = 4000
-PCT_CHANGE_24H = float(getenv("PCT_CHANGE_24H", "10.0"))  # 10% por defecto, configurable en .env
+PCT_CHANGE_24H = float(getenv("PCT_CHANGE_24H", "10.0"))
 
 class CryptoBot:
     def __init__(self):
-        # Instanciamos el cliente Binance pasando las credenciales desde config y la flag USE_TESTNET y DRY_RUN.
-        # BinanceClient maneja strip() internamente y soporta use_testnet/dry_run.
         self.exchange = BinanceClient(
             api_key=API_KEY, api_secret=API_SECRET,
             use_testnet=USE_TESTNET, dry_run=DRY_RUN
@@ -56,6 +55,24 @@ class CryptoBot:
         self._telegram_fail_count = 0
         self._telegram_fail_threshold = 5
         self._recent_telegram_disabled = False
+
+    async def initialize(self):
+        """Pre-run initializations, like setting exchange mode."""
+        logger.info("Initializing bot...")
+        await self.safe_send_telegram("🚀 CryptoBot iniciando... Configurando modo de operación.")
+        try:
+            is_hedge_mode = await self.exchange.set_hedge_mode(True)
+            if is_hedge_mode:
+                logger.info("✅ Exchange successfully set to Hedge Mode.")
+                await self.safe_send_telegram("✅ Bot iniciado correctamente en Hedge Mode (TESTNET, full-scan PERPETUAL USDT-M).")
+            else:
+                logger.critical("❌ FAILED to set exchange to Hedge Mode. Orders will likely fail.")
+                await self.safe_send_telegram("❌ CRITICAL: No se pudo configurar Hedge Mode. El bot no podrá operar.")
+                raise RuntimeError("Could not set Hedge Mode on Binance.")
+        except Exception as e:
+            logger.exception(f"❌ Critical error during initialization: {e}")
+            await self.safe_send_telegram(f"❌ Error crítico durante la inicialización: {e}")
+            raise
 
     async def safe_send_telegram(self, msg: str):
         try:
@@ -95,21 +112,39 @@ class CryptoBot:
                                     wait_timeout: int = 30) -> Tuple[Optional[Any], Optional[Any], Optional[Any]]:
         entry_order = stop_order = tp_order = None
         close_side = "SELL" if side.upper() == "BUY" else "BUY"
+        
+        # --- PATCH: Define positionSide for Hedge Mode ---
+        position_side = "LONG" if side.upper() == "BUY" else "SHORT"
+        
         try:
-            entry_order = await self.exchange.create_order(symbol, "limit", side, quantity, entry_price, {"timeInForce": "GTC"})
+            # --- PATCH: Add positionSide to params ---
+            entry_params = {"timeInForce": "GTC", "positionSide": position_side}
+            entry_order = await self.exchange.create_order(symbol, "limit", side, quantity, entry_price, entry_params)
             logger.info("LIMIT entry creada %s: %s", symbol, entry_order)
         except Exception as e:
             raise Exception(f"No se pudo crear orden LIMIT de entrada para {symbol}: {e}") from e
 
         try:
-            params_sl = {"stopPrice": stop_price, "reduceOnly": True, "timeInForce": "GTC"}
+            # --- PATCH: Add positionSide to params ---
+            params_sl = {
+                "stopPrice": stop_price, 
+                "reduceOnly": True, 
+                "timeInForce": "GTC", 
+                "positionSide": position_side
+            }
             stop_order = await self.exchange.create_order(symbol, "stop_limit", close_side, quantity, stop_price, params_sl)
             logger.info("SL stop-limit creado %s: %s", symbol, stop_order)
         except Exception as e:
             logger.warning("Crear SL falló para %s: %s", symbol, e)
 
         try:
-            params_tp = {"stopPrice": take_profit_price, "reduceOnly": True, "timeInForce": "GTC"}
+            # --- PATCH: Add positionSide to params ---
+            params_tp = {
+                "stopPrice": take_profit_price, 
+                "reduceOnly": True, 
+                "timeInForce": "GTC", 
+                "positionSide": position_side
+            }
             tp_order = await self.exchange.create_order(symbol, "take_profit_limit", close_side, quantity, take_profit_price, params_tp)
             logger.info("TP take-profit-limit creado %s: %s", symbol, tp_order)
         except Exception as e:
@@ -132,24 +167,16 @@ class CryptoBot:
             ema50_15m = EMAIndicator(df_15m["close"], window=50).ema_indicator().iloc[-1]
             price = float(df_1m["close"].iloc[-1])
 
-            ohlcv_24h = await self.exchange.fetch_ohlcv(sym, timeframe="1d", limit=2)
-            if ohlcv_24h and len(ohlcv_24h) == 2:
-                price_prev = float(ohlcv_24h[0][4])
-                pct_change = abs((price - price_prev) / price_prev * 100)
-                if pct_change < PCT_CHANGE_24H:
-                    return None
-
             if price > ema50_15m and ema9 > ema21 and rsi14 < 65:
                 return "long"
             if price < ema50_15m and ema9 < ema21 and rsi14 > 35:
                 return "short"
             return None
         except Exception as e:
-            msg = str(e)
-            if "Invalid symbol" in msg or "Invalid symbol status" in msg:
-                logger.info("Símbolo inválido/estado inválido %s: %s", sym, msg)
-                return None
-            logger.debug("Error analizando %s: %s", sym, e)
+            if "Invalid symbol" in str(e):
+                logger.debug("Símbolo inválido %s, ignorando.", sym)
+            else:
+                logger.debug("Error analizando %s: %s", sym, e)
             return None
 
     async def ejecutar_trade(self, sym: str, signal: str):
@@ -157,11 +184,11 @@ class CryptoBot:
             return
         size_usdt = CAPITAL_TOTAL * POSITION_SIZE_PERCENT
         try:
-            ohlcv = await self.exchange.fetch_ohlcv(sym, timeframe=TIMEFRAME_SIGNAL, limit=1)
-            if not ohlcv:
-                await self.safe_send_telegram(f"⚠️ No se pudo obtener precio para {sym}")
+            ticker = await self.exchange.fetch_ticker(sym)
+            if not ticker or 'last' not in ticker:
+                logger.warning(f"⚠️ No se pudo obtener precio para {sym}")
                 return
-            price = float(ohlcv[-1][4])
+            price = float(ticker['last'])
         except Exception as e:
             await self.safe_send_telegram(f"❌ Error obteniendo precio para {sym}: {e}")
             return
@@ -169,7 +196,7 @@ class CryptoBot:
         quantity = min(MAX_TRADE_USDT / price, size_usdt / price) * LEVERAGE
         notional = quantity * price
         if notional < MIN_NOTIONAL_USD:
-            await self.safe_send_telegram(f"⚠️ Orden ignorada {sym}: Notional {notional:.2f} < min {MIN_NOTIONAL_USD}")
+            logger.warning(f"⚠️ Orden ignorada {sym}: Notional {notional:.2f} < min {MIN_NOTIONAL_USD}")
             return
 
         if signal == "long":
@@ -186,7 +213,7 @@ class CryptoBot:
             return
 
         try:
-            entry_order, stop_order, tp_order = await self._create_bracket_order(sym, side, quantity, entry, sl, tp)
+            entry_order, _, _ = await self._create_bracket_order(sym, side, quantity, entry, sl, tp)
             if entry_order:
                 self.state.register_open_position(sym, signal, entry, (quantity / LEVERAGE) * price, sl, tp)
                 await self.safe_send_telegram(
@@ -207,8 +234,7 @@ class CryptoBot:
             self.last_loop_heartbeat = datetime.now(timezone.utc)
             self.state.reset_daily_if_needed()
 
-            if not getattr(self.state, "can_open_new_trade", lambda: True)() or \
-               len(getattr(self.state, "open_positions", {})) >= MAX_OPERATIONS_SIMULTANEAS:
+            if not self.state.can_open_new_trade() or len(self.state.open_positions) >= MAX_OPERATIONS_SIMULTANEAS:
                 await asyncio.sleep(5)
                 continue
             if not self.symbols:
@@ -233,25 +259,12 @@ async def symbols_refresher(bot: CryptoBot):
 async def periodic_report(bot: CryptoBot):
     while True:
         await asyncio.sleep(3600)
-        open_syms = list(getattr(bot.state, "open_positions", {}).keys())
-        pnl = getattr(bot.state, "realized_pnl_today", 0.0)
+        open_syms = list(bot.state.open_positions.keys())
+        pnl = bot.state.realized_pnl_today
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
         await bot.safe_send_telegram(
-            f"🕒 Reporte horario {ts}\n📌 Operaciones abiertas: {len(open_syms)}\n📌 PnL diario: {pnl:.2f} USDT\n📌 Símbolos escaneados: {len(bot.symbols)}"
+            f"🕒 Reporte horario {ts}\n📌 Operaciones abiertas: {len(open_syms)}\n💰 PnL diario: {pnl:.2f} USDT\n📈 Símbolos escaneados: {len(bot.symbols)}"
         )
-
-async def monitor_positions(bot: CryptoBot):
-    while True:
-        closed_positions = getattr(bot.state, "closed_positions_history", [])
-        for pos in closed_positions or []:
-            try:
-                sym = pos.get("symbol")
-                pnl = pos.get("pnl", 0.0)
-                reason = pos.get("reason", "unknown")
-                await bot.safe_send_telegram(f"📉 {sym} cerrada por {reason}. PnL: {pnl:.2f} USDT")
-            except Exception:
-                continue
-        await asyncio.sleep(5)
 
 async def watchdog_loop(bot: CryptoBot):
     while True:
@@ -264,33 +277,28 @@ async def main():
     bot = CryptoBot()
     tasks = []
     try:
-        await bot.safe_send_telegram("🚀 CryptoBot iniciado en TESTNET (limit-only orders, full-scan PERPETUAL USDT-M)")
+        # --- PATCH: Add initialization step ---
+        await bot.initialize()
+        
         tasks.append(asyncio.create_task(symbols_refresher(bot)))
         tasks.append(asyncio.create_task(periodic_report(bot)))
-        tasks.append(asyncio.create_task(monitor_positions(bot)))
         tasks.append(asyncio.create_task(watchdog_loop(bot)))
         await bot.run_trading_loop()
-    except KeyboardInterrupt:
-        logger.info("Interrupción por teclado recibida")
-        await bot.safe_send_telegram("⏹️ CryptoBot detenido manualmente")
+    except (KeyboardInterrupt, RuntimeError):
+        logger.info("Interrupción recibida, deteniendo el bot...")
+        await bot.safe_send_telegram("⏹️ CryptoBot detenido.")
     except Exception as e:
         logger.exception("Error crítico en main: %s", e)
         await bot.safe_send_telegram(f"❌ Error crítico en main: {e}")
     finally:
         for t in tasks:
             t.cancel()
-            try:
-                await t
-            except asyncio.CancelledError:
-                pass
         try:
-            await bot.exchange.close()
-        except Exception:
-            logger.debug("Error cerrando exchange")
-        try:
-            await bot.telegram.close()
-        except Exception:
-            logger.debug("Error cerrando telegram session")
+            await asyncio.gather(*tasks, return_exceptions=True)
+        except asyncio.CancelledError:
+            pass
+        await bot.exchange.close()
+        await bot.telegram.close()
 
 if __name__ == "__main__":
     asyncio.run(main())
