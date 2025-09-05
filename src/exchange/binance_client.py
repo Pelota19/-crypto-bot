@@ -1,9 +1,12 @@
 """
 Robust async wrapper around ccxt.async_support.binance (USDT-M Futures).
 
+Cambios clave:
 - Testnet bien configurado para USDT-M (fapi endpoints).
-- fetch_all_symbols() usa fapiPublicGetExchangeInfo para traer todos los
-  símbolos PERPETUAL/USDT en estado TRADING, devuelve 'BASE/USDT'.
+- fetch_all_symbols() usa fapiPublicGetExchangeInfo para traer TODOS los
+  símbolos PERPETUAL/USDT en estado TRADING, y los devuelve como 'BASE/USDT'.
+- fetch_ohlcv y fetch_ticker devuelven None si falla.
+- Filtro de ±5% en 24h para señales (para usar en bot full scan).
 - Manejo de errores y cierre limpio.
 """
 import logging
@@ -13,6 +16,7 @@ import ccxt.async_support as ccxt
 from ccxt.base.errors import BadRequest, ExchangeError, NetworkError, RequestTimeout
 
 logger = logging.getLogger(__name__)
+
 
 class BinanceClient:
     def __init__(self, api_key: str = None, api_secret: str = None, use_testnet: bool = False, dry_run: bool = False):
@@ -67,14 +71,17 @@ class BinanceClient:
             out = []
             for s in info.get("symbols", []):
                 try:
-                    if s.get("contractType") == "PERPETUAL" and s.get("quoteAsset") == "USDT" and s.get("status") == "TRADING":
+                    if (
+                        s.get("contractType") == "PERPETUAL" and
+                        s.get("quoteAsset") == "USDT" and
+                        s.get("status") == "TRADING"
+                    ):
                         base = s.get("baseAsset")
                         quote = s.get("quoteAsset")
                         if base and quote:
                             out.append(f"{base}/{quote}")
                 except Exception:
                     continue
-            # quitar duplicados por si acaso
             out = sorted(list(set(out)))
             logger.info("Símbolos detectados en Binance (USDT-M PERPETUAL): %s", out)
             return out
@@ -86,13 +93,16 @@ class BinanceClient:
         syms = await self._fetch_all_usdt_perpetual_symbols_via_raw()
         if syms:
             return syms
-        # fallback
+
         try:
             await self._ensure_exchange()
             markets = self.exchange.markets or {}
             return [
                 sym for sym, m in markets.items()
-                if isinstance(sym, str) and sym.endswith("/USDT") and m.get("type") == "future" and m.get("active", True)
+                if isinstance(sym, str)
+                and sym.endswith("/USDT")
+                and m.get("type") == "future"
+                and m.get("active", True)
             ]
         except Exception as e:
             logger.warning("fetch_all_symbols fallback failed: %s", e)
@@ -113,13 +123,31 @@ class BinanceClient:
         await self._ensure_exchange()
         try:
             ohlcv = await self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, since=since, limit=limit)
-            return ohlcv if ohlcv else None
+            if not ohlcv:
+                logger.debug("fetch_ohlcv returned empty for %s %s", symbol, timeframe)
+                return None
+            # normalización precios a float
+            for i in range(len(ohlcv)):
+                ohlcv[i] = [float(x) for x in ohlcv[i]]
+            return ohlcv
         except (BadRequest, NetworkError, RequestTimeout, ExchangeError) as e:
-            logger.warning("fetch_ohlcv failed for %s: %s", symbol, e)
+            logger.warning("fetch_ohlcv failed for %s %s: %s", symbol, timeframe, e)
             return None
         except Exception as e:
-            logger.exception("fetch_ohlcv unexpected error for %s: %s", symbol, e)
+            logger.exception("fetch_ohlcv unexpected error for %s %s: %s", symbol, timeframe, e)
             return None
+
+    async def fetch_24h_change(self, symbol: str) -> Optional[float]:
+        """
+        Retorna el cambio % absoluto de las últimas 24h para filtrar ±5%
+        """
+        ticker = await self.fetch_ticker(symbol)
+        if ticker and "percentage" in ticker:
+            try:
+                return abs(float(ticker["percentage"]))
+            except Exception:
+                return None
+        return None
 
     async def create_order(self, symbol: str, type: str, side: str, amount: float, price: Optional[float] = None, params: Optional[dict] = None) -> Any:
         await self._ensure_exchange()
