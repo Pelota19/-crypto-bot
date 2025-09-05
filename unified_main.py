@@ -4,7 +4,9 @@ Scalping EMA/RSI con gestión de riesgo estricta y Bracket orders.
 Telegram actúa como consola de alertas y reportes.
 Excepción SOL/USDT para abrir orden mínima si cumple estrategia.
 Incluye monitor de cierres de posiciones y watchdog para alertas de fallas.
-Modificado: usar SOLO órdenes limit para la entrada y SL/TP en modo stop-limit (sin market).
+
+Modificación: entrada SOLO con órdenes LIMIT y SL/TP configuradas como stop-limit / take-profit-limit.
+Se añadió fallback robusto cuando el cliente exchange devuelve errores (símbolos inválidos).
 """
 import asyncio
 import logging
@@ -85,10 +87,9 @@ class CryptoBot:
 
     async def actualizar_watchlist(self):
         """
-        Construye watchlist usando fetch_all_symbols (compatible con BinanceClient que tienes).
-        - Filtra por símbolos que terminen en '/USDT' (heurística para mercado USDT-M).
-        - Evita símbolos que al consultar OHLCV/ticker devuelvan errores (p.ej. Invalid symbol status).
-        - Notifica una sola vez la actualización.
+        Construye watchlist usando fetch_all_symbols (compatible con BinanceClient).
+        - Filtra por símbolos que terminen en '/USDT'
+        - Evita símbolos que devuelvan errores al pedir OHLCV/ticker (serán ignorados)
         """
         try:
             all_symbols = await self.exchange.fetch_all_symbols()
@@ -114,7 +115,7 @@ class CryptoBot:
                     ohlcv = await self.exchange.fetch_ohlcv(sym, timeframe=TIMEFRAME_TENDENCIA, limit=50)
                     if not ohlcv:
                         continue
-                    df = pd.DataFrame(ohlcv, columns=["timestamp","open","high","low","close","volume"])
+                    df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
                     price = float(df["close"].iloc[-1])
                     if price > MAX_PRICE_PER_UNIT:
                         continue
@@ -135,9 +136,6 @@ class CryptoBot:
             global WATCHLIST_DINAMICA
             WATCHLIST_DINAMICA = [x[0] for x in filtered[:MAX_ACTIVE_SYMBOLS]]
             await self.safe_send_telegram(f"📊 Watchlist actualizada: {WATCHLIST_DINAMICA}")
-        except AttributeError as e:
-            logger.error("fetch_all_symbols no disponible en exchange client: %s", e)
-            await self.safe_send_telegram("❌ Error actualizando watchlist: fetch_all_symbols no disponible en el cliente exchange")
         except Exception as e:
             await self.safe_send_telegram(f"❌ Error actualizando watchlist: {e}")
 
@@ -147,8 +145,8 @@ class CryptoBot:
             ohlcv_15m = await self.exchange.fetch_ohlcv(sym, timeframe=TIMEFRAME_TENDENCIA, limit=50)
             if not ohlcv_1m or not ohlcv_15m:
                 return None
-            df_1m = pd.DataFrame(ohlcv_1m, columns=["timestamp","open","high","low","close","volume"])
-            df_15m = pd.DataFrame(ohlcv_15m, columns=["timestamp","open","high","low","close","volume"])
+            df_1m = pd.DataFrame(ohlcv_1m, columns=["timestamp", "open", "high", "low", "close", "volume"])
+            df_15m = pd.DataFrame(ohlcv_15m, columns=["timestamp", "open", "high", "low", "close", "volume"])
             ema9 = EMAIndicator(df_1m["close"], window=9).ema_indicator().iloc[-1]
             ema21 = EMAIndicator(df_1m["close"], window=21).ema_indicator().iloc[-1]
             rsi14 = RSIIndicator(df_1m["close"], window=14).rsi().iloc[-1]
@@ -177,13 +175,12 @@ class CryptoBot:
                                     entry_price: float, stop_price: float, take_profit_price: float,
                                     wait_timeout: int = 30) -> Tuple[Optional[Any], Optional[Any], Optional[Any]]:
         """
-        Implementación que usa SOLO órdenes limit para la entrada y stop-limit para SL/TP.
-        - Si el cliente tiene create_bracket_order lo intenta; si falla o no existe, usa el fallback que
-          crea una orden LIMIT de entrada y STOP-LIMIT para SL/TP.
-        Nota: las órdenes limit pueden NO ejecutarse inmediatamente. Debes aceptar el riesgo y/o ajustar
-        price/offset para mejorar probabilidad de fill. El monitor debería reconciliar órdenes no llenadas.
+        Limit-only flow:
+        - Create LIMIT entry order (GTC).
+        - Create stop-limit (SL) and take-profit-limit (TP) orders using common variants.
+        Note: Limit entry may not fill immediately. Ensure monitor/reconciler is enabled to track fills.
         """
-        # 1) Preferir implementación nativa del cliente si existe
+        # If client has native create_bracket_order, try it first
         if hasattr(self.exchange, "create_bracket_order") and callable(getattr(self.exchange, "create_bracket_order")):
             try:
                 return await self.exchange.create_bracket_order(
@@ -201,26 +198,20 @@ class CryptoBot:
         entry_order = None
         stop_order = None
         tp_order = None
-
         close_side = "SELL" if side.upper() == "BUY" else "BUY"
 
-        # 2) Crear orden de entrada SOLO como LIMIT (sin market)
+        # 1) Create entry as LIMIT only
         try:
-            # Asegúrate de que create_order acepta signature create_order(symbol, type, side, amount, price=None, params=None)
-            params_entry = {"timeInForce": "GTC"}  # keep until filled or cancelled
+            params_entry = {"timeInForce": "GTC"}
             entry_order = await self.exchange.create_order(symbol, 'limit', side, quantity, entry_price, params_entry)
             logger.info("Orden LIMIT de entrada creada para %s: %s", symbol, entry_order)
         except Exception as e:
             logger.error("No se pudo crear la orden LIMIT de entrada para %s a %s: %s", symbol, entry_price, e)
-            # Devolvemos (None, None, None) para indicar fallo de apertura
             raise Exception(f"No se pudo crear orden LIMIT de entrada para {symbol}: {e}") from e
 
-        # 3) Crear SL y TP como STOP-LIMIT / TAKE-PROFIT-LIMIT (intentos con variantes comunes)
-        # Nota: dependiendo del wrapper, los tipos y nombres de params pueden variar; adaptaremos en logs.
-        # Stop-limit (SL)
+        # 2) SL stop-limit (attempt common variants)
         try:
             params_sl = {"stopPrice": stop_price, "reduceOnly": True, "timeInForce": "GTC"}
-            # tipo común: 'stop_limit' o 'STOP_LIMIT' o 'STOP_LOSS_LIMIT'
             try:
                 stop_order = await self.exchange.create_order(symbol, 'stop_limit', close_side, quantity, stop_price, params_sl)
             except Exception:
@@ -230,7 +221,7 @@ class CryptoBot:
             logger.warning("Crear SL (stop-limit) falló para %s: %s", symbol, e)
             stop_order = None
 
-        # Take-profit limit (TP)
+        # 3) TP take-profit-limit (attempt common variants)
         try:
             params_tp = {"stopPrice": take_profit_price, "reduceOnly": True, "timeInForce": "GTC"}
             try:
@@ -303,6 +294,7 @@ class CryptoBot:
                 wait_timeout=30
             )
             if entry_order:
+                # register_open_position expects notional based on pre-leverage amount in previous design
                 self.state.register_open_position(sym, signal, entry, (quantity / LEVERAGE) * price, sl, tp)
                 await self.safe_send_telegram(
                     f"✅ {sym} {signal.upper()} LIMIT creado @ {entry:.2f} USDT\nSL {sl:.2f} | TP {tp:.2f} | Qty {quantity:.6f}"
@@ -320,8 +312,11 @@ class CryptoBot:
     async def run_trading_loop(self):
         while not self._stop_event.is_set():
             self.last_loop_heartbeat = datetime.now(timezone.utc)
-            self.state.reset_daily_if_needed()
-            if not self.state.can_open_new_trade() or len(self.state.open_positions) >= MAX_OPERATIONS_SIMULTANEAS:
+            try:
+                self.state.reset_daily_if_needed()
+            except Exception:
+                logger.debug("StateManager.reset_daily_if_needed missing or failed", exc_info=True)
+            if not getattr(self.state, "can_open_new_trade", lambda: True)() or len(getattr(self.state, "open_positions", {})) >= MAX_OPERATIONS_SIMULTANEAS:
                 await asyncio.sleep(60)
                 continue
             tasks = [self.procesar_par(sym) for sym in WATCHLIST_DINAMICA]
@@ -334,7 +329,7 @@ async def periodic_report(bot):
     while True:
         try:
             await asyncio.sleep(3600)
-            open_syms = list(bot.state.open_positions.keys())
+            open_syms = list(getattr(bot.state, "open_positions", {}).keys())
             pnl = getattr(bot.state, "realized_pnl_today", 0.0)
             timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
             await bot.safe_send_telegram(
@@ -346,13 +341,13 @@ async def periodic_report(bot):
         except Exception as e:
             await bot.safe_send_telegram(f"❌ Error en reporte horario: {e}")
 
+
 async def monitor_positions(bot):
     """
-    Monitor con compatibilidad hacia varias implementaciones de StateManager:
-    - Si StateManager implementa check_positions_closed(), se usa.
-    - Si implementa get_closed_positions(), se usa.
-    - Si no hay método, no hace nada (fallback seguro).
-    Además: es importante que el monitor también detecte órdenes LIMIT no llenadas y las reemplace o cancele.
+    Monitor flexible que:
+    - pregunta a StateManager por posiciones cerradas (métodos check_positions_closed/get_closed_positions/closed_positions_history)
+    - y notifica cierres
+    Nota: idealmente añadir reconciliador que inspeccione fetch_open_orders/fetch_order y actualice state.
     """
     while True:
         try:
@@ -422,6 +417,7 @@ async def main():
             await bot.telegram.close()
         except Exception:
             logger.debug("Error cerrando telegram session")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
