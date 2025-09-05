@@ -2,9 +2,9 @@
 Unified CryptoBot - Binance Futures (USDT-M) - FULL SCAN (sin watchlist)
 Estrategia: Scalping EMA/RSI con órdenes LIMIT + SL/TP limit.
 - Analiza TODOS los pares USDT-M PERPETUAL (testnet) en bucle.
-- Refresca la lista de símbolos cada N minutos (por defecto 10).
+- Refresca la lista de símbolos cada 15 minutos.
 - Notifica por Telegram.
-- Solo ejecuta trades si el cambio en las últimas 24h supera ±5%.
+- Solo ejecuta trades si el cambio en las últimas 24h supera ±PCT_CHANGE_24H (configurable .env)
 """
 
 import asyncio
@@ -12,6 +12,7 @@ import logging
 import pandas as pd
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Tuple, Any
+from os import getenv
 
 from config import (
     API_KEY, API_SECRET, USE_TESTNET, POSITION_SIZE_PERCENT, MAX_OPEN_TRADES, DAILY_PROFIT_TARGET,
@@ -35,22 +36,21 @@ TIMEFRAME_SIGNAL = "1m"
 TIMEFRAME_TENDENCIA = "15m"
 MAX_OPERATIONS_SIMULTANEAS = MAX_OPEN_TRADES
 MAX_TRADE_USDT = 50                   # tope por trade
-REFRESH_SYMBOLS_MINUTES = 10          # cada cuánto refrescar TODOS los símbolos
+REFRESH_SYMBOLS_MINUTES = 15          # refresh cada 15 min
 TELEGRAM_MSG_MAX = 4000
-PCT_CHANGE_24H = 5.0                  # mínimo cambio porcentual en 24h
+PCT_CHANGE_24H = float(getenv("PCT_CHANGE_24H", "10.0"))  # 10% por defecto, configurable en .env
 
 class CryptoBot:
     def __init__(self):
         self.exchange = BinanceClient(
             api_key=API_KEY, api_secret=API_SECRET,
-            use_testnet=USE_TESTNET, dry_run=False
+            use_testnet=USETESTNET, dry_run=False
         )
         self.telegram = TelegramNotifier(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
         self.state = StateManager(daily_profit_target=DAILY_PROFIT_TARGET)
         self._stop_event = asyncio.Event()
         self.last_loop_heartbeat = datetime.now(timezone.utc)
         self.symbols: List[str] = []
-        # protección fallos Telegram
         self._telegram_fail_count = 0
         self._telegram_fail_threshold = 5
         self._recent_telegram_disabled = False
@@ -68,20 +68,22 @@ class CryptoBot:
             self._telegram_fail_count = 0
         except Exception as e:
             logger.warning("Telegram message failed: %s", e)
-            self._telegram_fail_count = getattr(self, "_telegram_fail_count", 0) + 1
-            if self._telegram_fail_count >= getattr(self, "_telegram_fail_threshold", 5):
+            self._telegram_fail_count += 1
+            if self._telegram_fail_count >= self._telegram_fail_threshold:
                 logger.error("Telegram failing %d times, disabling temporarily", self._telegram_fail_count)
                 self._recent_telegram_disabled = True
 
     async def refresh_symbols(self):
-        """
-        Trae TODOS los símbolos PERPETUAL USDT-M desde el exchange (testnet).
-        """
         try:
             syms = await self.exchange.fetch_all_symbols()
-            self.symbols = syms
-            logger.info("Símbolos (full-scan): %s", syms)
-            await self.safe_send_telegram(f"🔄 Lista de símbolos refrescada ({len(syms)}): {syms}")
+            filtered_syms = []
+            for sym in syms:
+                change_pct = await self.exchange.fetch_24h_change(sym)
+                if change_pct is not None and change_pct >= PCT_CHANGE_24H:
+                    filtered_syms.append(sym)
+            self.symbols = filtered_syms
+            logger.info("Símbolos filtrados por ±%s%%: %s", PCT_CHANGE_24H, filtered_syms)
+            await self.safe_send_telegram(f"🔄 Lista de símbolos refrescada ({len(filtered_syms)}): {filtered_syms}")
         except Exception as e:
             logger.exception("Error refrescando símbolos: %s", e)
             await self.safe_send_telegram(f"❌ Error refrescando símbolos: {e}")
@@ -89,51 +91,32 @@ class CryptoBot:
     async def _create_bracket_order(self, symbol: str, side: str, quantity: float,
                                     entry_price: float, stop_price: float, take_profit_price: float,
                                     wait_timeout: int = 30) -> Tuple[Optional[Any], Optional[Any], Optional[Any]]:
-        entry_order = None
-        stop_order = None
-        tp_order = None
+        entry_order = stop_order = tp_order = None
         close_side = "SELL" if side.upper() == "BUY" else "BUY"
-
         try:
-            params_entry = {"timeInForce": "GTC"}
-            entry_order = await self.exchange.create_order(symbol, "limit", side, quantity, entry_price, params_entry)
+            entry_order = await self.exchange.create_order(symbol, "limit", side, quantity, entry_price, {"timeInForce": "GTC"})
             logger.info("LIMIT entry creada %s: %s", symbol, entry_order)
         except Exception as e:
-            logger.error("Fallo creando LIMIT de entrada %s @%s: %s", symbol, entry_price, e)
             raise Exception(f"No se pudo crear orden LIMIT de entrada para {symbol}: {e}") from e
 
         try:
             params_sl = {"stopPrice": stop_price, "reduceOnly": True, "timeInForce": "GTC"}
-            try:
-                stop_order = await self.exchange.create_order(symbol, "stop_limit", close_side, quantity, stop_price, params_sl)
-            except Exception:
-                stop_order = await self.exchange.create_order(symbol, "STOP_LIMIT", close_side, quantity, stop_price, params_sl)
+            stop_order = await self.exchange.create_order(symbol, "stop_limit", close_side, quantity, stop_price, params_sl)
             logger.info("SL stop-limit creado %s: %s", symbol, stop_order)
         except Exception as e:
-            logger.warning("Crear SL (stop-limit) falló para %s: %s", symbol, e)
+            logger.warning("Crear SL falló para %s: %s", symbol, e)
 
         try:
             params_tp = {"stopPrice": take_profit_price, "reduceOnly": True, "timeInForce": "GTC"}
-            try:
-                tp_order = await self.exchange.create_order(symbol, "take_profit_limit", close_side, quantity, take_profit_price, params_tp)
-            except Exception:
-                tp_order = await self.exchange.create_order(symbol, "TAKE_PROFIT_LIMIT", close_side, quantity, take_profit_price, params_tp)
+            tp_order = await self.exchange.create_order(symbol, "take_profit_limit", close_side, quantity, take_profit_price, params_tp)
             logger.info("TP take-profit-limit creado %s: %s", symbol, tp_order)
         except Exception as e:
-            logger.warning("Crear TP (take-profit limit) falló para %s: %s", symbol, e)
+            logger.warning("Crear TP falló para %s: %s", symbol, e)
 
         return entry_order, stop_order, tp_order
 
     async def analizar_signal(self, sym: str) -> Optional[str]:
-        """
-        Señal simple:
-        - Tendencia por EMA50 en 15m
-        - Cruce EMA9/EMA21 en 1m
-        - RSI 1m con filtros de sobrecompra/sobreventa suaves
-        - Solo considerar si cambio 24h > ±PCT_CHANGE_24H
-        """
         try:
-            # fetch OHLCV
             ohlcv_1m = await self.exchange.fetch_ohlcv(sym, timeframe=TIMEFRAME_SIGNAL, limit=50)
             ohlcv_15m = await self.exchange.fetch_ohlcv(sym, timeframe=TIMEFRAME_TENDENCIA, limit=50)
             if not ohlcv_1m or not ohlcv_15m:
@@ -147,20 +130,15 @@ class CryptoBot:
             ema50_15m = EMAIndicator(df_15m["close"], window=50).ema_indicator().iloc[-1]
             price = float(df_1m["close"].iloc[-1])
 
-            # cálculo cambio 24h
             ohlcv_24h = await self.exchange.fetch_ohlcv(sym, timeframe="1d", limit=2)
             if ohlcv_24h and len(ohlcv_24h) == 2:
                 price_prev = float(ohlcv_24h[0][4])
                 pct_change = abs((price - price_prev) / price_prev * 100)
                 if pct_change < PCT_CHANGE_24H:
-                    return None  # ignorar si no supera ±5%
-            else:
-                pct_change = 0.0
+                    return None
 
-            # Long si: tendencia alcista + cruce alcista + RSI no sobrecomprado
             if price > ema50_15m and ema9 > ema21 and rsi14 < 65:
                 return "long"
-            # Short si: tendencia bajista + cruce bajista + RSI no sobrevendido
             if price < ema50_15m and ema9 < ema21 and rsi14 > 35:
                 return "short"
             return None
@@ -186,16 +164,11 @@ class CryptoBot:
             await self.safe_send_telegram(f"❌ Error obteniendo precio para {sym}: {e}")
             return
 
-        min_notional = MIN_NOTIONAL_USD
-        quantity = (size_usdt / price)
-        notional = price * quantity
-        if notional > MAX_TRADE_USDT:
-            quantity = MAX_TRADE_USDT / price
-            notional = MAX_TRADE_USDT
-        if notional < min_notional:
-            await self.safe_send_telegram(f"⚠️ Orden ignorada {sym}: Notional {notional:.2f} < min {min_notional}")
+        quantity = min(MAX_TRADE_USDT / price, size_usdt / price) * LEVERAGE
+        notional = quantity * price
+        if notional < MIN_NOTIONAL_USD:
+            await self.safe_send_telegram(f"⚠️ Orden ignorada {sym}: Notional {notional:.2f} < min {MIN_NOTIONAL_USD}")
             return
-        quantity *= LEVERAGE
 
         if signal == "long":
             entry = price
@@ -211,20 +184,11 @@ class CryptoBot:
             return
 
         try:
-            entry_order, stop_order, tp_order = await self._create_bracket_order(
-                symbol=sym,
-                side=side,
-                quantity=quantity,
-                entry_price=entry,
-                stop_price=sl,
-                take_profit_price=tp,
-                wait_timeout=30
-            )
+            entry_order, stop_order, tp_order = await self._create_bracket_order(sym, side, quantity, entry, sl, tp)
             if entry_order:
                 self.state.register_open_position(sym, signal, entry, (quantity / LEVERAGE) * price, sl, tp)
                 await self.safe_send_telegram(
-                    f"✅ {sym} {signal.upper()} LIMIT @ {entry:.4f}\n"
-                    f"SL {sl:.4f} | TP {tp:.4f} | Qty {quantity:.6f}"
+                    f"✅ {sym} {signal.upper()} LIMIT @ {entry:.4f}\nSL {sl:.4f} | TP {tp:.4f} | Qty {quantity:.6f}"
                 )
             else:
                 await self.safe_send_telegram(f"❌ No se pudo crear orden LIMIT para {sym}")
@@ -239,13 +203,10 @@ class CryptoBot:
     async def run_trading_loop(self):
         while not self._stop_event.is_set():
             self.last_loop_heartbeat = datetime.now(timezone.utc)
-            try:
-                self.state.reset_daily_if_needed()
-            except Exception:
-                logger.debug("StateManager.reset_daily_if_needed missing or failed", exc_info=True)
+            self.state.reset_daily_if_needed()
 
-            if (not getattr(self.state, "can_open_new_trade", lambda: True)()) or \
-               (len(getattr(self.state, "open_positions", {})) >= MAX_OPERATIONS_SIMULTANEAS):
+            if not getattr(self.state, "can_open_new_trade", lambda: True)() or \
+               len(getattr(self.state, "open_positions", {})) >= MAX_OPERATIONS_SIMULTANEAS:
                 await asyncio.sleep(5)
                 continue
             if not self.symbols:
@@ -260,61 +221,43 @@ class CryptoBot:
                 await asyncio.sleep(0.5)
             await asyncio.sleep(1)
 
-async def periodic_report(bot: CryptoBot):
-    while True:
-        try:
-            await asyncio.sleep(3600)
-            open_syms = list(getattr(bot.state, "open_positions", {}).keys())
-            pnl = getattr(bot.state, "realized_pnl_today", 0.0)
-            ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-            await bot.safe_send_telegram(
-                f"🕒 Reporte horario {ts}\n"
-                f"📌 Operaciones abiertas: {len(open_syms)}\n"
-                f"📌 PnL diario: {pnl:.2f} USDT\n"
-                f"📌 Símbolos escaneados: {len(bot.symbols)}"
-            )
-        except Exception as e:
-            await bot.safe_send_telegram(f"❌ Error en reporte horario: {e}")
-
-async def monitor_positions(bot: CryptoBot):
-    while True:
-        try:
-            closed_positions = []
-            if hasattr(bot.state, "check_positions_closed") and callable(getattr(bot.state, "check_positions_closed")):
-                closed_positions = bot.state.check_positions_closed()
-            elif hasattr(bot.state, "get_closed_positions") and callable(getattr(bot.state, "get_closed_positions")):
-                closed_positions = bot.state.get_closed_positions()
-            else:
-                closed_positions = getattr(bot.state, "closed_positions_history", [])
-
-            for pos in closed_positions or []:
-                try:
-                    sym = pos.get("symbol")
-                    pnl = pos.get("pnl", 0.0)
-                    reason = pos.get("reason", "unknown")
-                    await bot.safe_send_telegram(f"📉 {sym} cerrada por {reason}. PnL: {pnl:.2f} USDT")
-                except Exception:
-                    logger.debug("Posición cerrada con formato inesperado: %s", pos)
-                    continue
-        except Exception as e:
-            await bot.safe_send_telegram(f"❌ Error monitor_positions: {e}")
-        await asyncio.sleep(5)
-
-async def watchdog_loop(bot: CryptoBot):
-    while True:
-        try:
-            await asyncio.sleep(60)
-            if (datetime.now(timezone.utc) - bot.last_loop_heartbeat) > timedelta(seconds=120):
-                await bot.safe_send_telegram("⚠️ Alert: posible bloqueo del bot")
-        except Exception as e:
-            await bot.safe_send_telegram(f"❌ Error watchdog: {e}")
-
+# ===== Loop auxiliares =====
 async def symbols_refresher(bot: CryptoBot):
     await bot.refresh_symbols()
     while True:
         await asyncio.sleep(REFRESH_SYMBOLS_MINUTES * 60)
         await bot.refresh_symbols()
 
+async def periodic_report(bot: CryptoBot):
+    while True:
+        await asyncio.sleep(3600)
+        open_syms = list(getattr(bot.state, "open_positions", {}).keys())
+        pnl = getattr(bot.state, "realized_pnl_today", 0.0)
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        await bot.safe_send_telegram(
+            f"🕒 Reporte horario {ts}\n📌 Operaciones abiertas: {len(open_syms)}\n📌 PnL diario: {pnl:.2f} USDT\n📌 Símbolos escaneados: {len(bot.symbols)}"
+        )
+
+async def monitor_positions(bot: CryptoBot):
+    while True:
+        closed_positions = getattr(bot.state, "closed_positions_history", [])
+        for pos in closed_positions or []:
+            try:
+                sym = pos.get("symbol")
+                pnl = pos.get("pnl", 0.0)
+                reason = pos.get("reason", "unknown")
+                await bot.safe_send_telegram(f"📉 {sym} cerrada por {reason}. PnL: {pnl:.2f} USDT")
+            except Exception:
+                continue
+        await asyncio.sleep(5)
+
+async def watchdog_loop(bot: CryptoBot):
+    while True:
+        await asyncio.sleep(60)
+        if (datetime.now(timezone.utc) - bot.last_loop_heartbeat) > timedelta(seconds=120):
+            await bot.safe_send_telegram("⚠️ Alert: posible bloqueo del bot")
+
+# ===== Main =====
 async def main():
     bot = CryptoBot()
     tasks = []
