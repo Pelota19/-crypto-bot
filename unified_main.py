@@ -1,5 +1,17 @@
-# Reemplaza tu unified_main.py por este (o integra las funciones añadidas).
-# He mantenido la mayoría de tu código original y añadí confirmaciones y monitor de fills.
+"""
+Unified CryptoBot - Binance Futures (USDT-M) - FULL SCAN (sin watchlist)
+
+Esta versión (v3 merged with v2) incluye:
+- Creación de órdenes LIMIT de entrada con SL/TP (fallback a STOP_MARKET / TAKE_PROFIT_MARKET cuando el exchange no acepta stop_limit / take_profit_limit).
+- Inyección de positionSide (LONG/SHORT) cuando HEDGE_MODE=True.
+- Confirmación por Telegram tras crear la bracket (indica si Entry/SL/TP se crearon).
+- Monitor mejorado de fills que:
+  - detecta ejecución parcial/total de la entry y actualiza entry_avg/entry_filled,
+  - detecta ejecución de SL o TP, calcula PnL usando avg y cantidad ejecutada,
+  - cancela la orden opuesta y registra el cierre en StateManager,
+  - notifica por Telegram el cierre con PnL y razón (SL/TP).
+- Usa TelegramNotifier con rate limiting / manejo 429 (cola asíncrona).
+"""
 
 import asyncio
 import logging
@@ -35,38 +47,42 @@ REFRESH_SYMBOLS_MINUTES = 15          # refresh cada 15 min
 TELEGRAM_MSG_MAX = 4000
 PCT_CHANGE_24H = float(getenv("PCT_CHANGE_24H", "10.0"))  # 10% por defecto, configurable en .env
 
+# Telegram rate limit (mensajes por minuto) - ajustable por .env si lo deseas
+TELEGRAM_RATE_PER_MIN = int(getenv("TELEGRAM_RATE_PER_MIN", "30"))
+
+
 class CryptoBot:
     def __init__(self):
+        # Exchange client
         self.exchange = BinanceClient(
             api_key=API_KEY, api_secret=API_SECRET,
             use_testnet=USE_TESTNET, dry_run=DRY_RUN, hedge_mode=HEDGE_MODE
         )
-        self.telegram = TelegramNotifier(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
+        # Telegram notifier (cola + rate limiting)
+        self.telegram = TelegramNotifier(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, rate_limit_per_min=TELEGRAM_RATE_PER_MIN)
+        # State manager
         self.state = StateManager(daily_profit_target=DAILY_PROFIT_TARGET)
         self._stop_event = asyncio.Event()
         self.last_loop_heartbeat = datetime.now(timezone.utc)
         self.symbols: List[str] = []
-        self._telegram_fail_count = 0
-        self._telegram_fail_threshold = 5
+        # Internal small guard not necessary for notifier (not used further)
         self._recent_telegram_disabled = False
 
     async def safe_send_telegram(self, msg: str):
+        """
+        Encola un mensaje para Telegram de forma segura (no bloqueante).
+        El TelegramNotifier se encarga del rate limit y del manejo de 429.
+        """
         try:
-            if getattr(self, "_recent_telegram_disabled", False):
-                logger.warning("Telegram disabled due to repeated failures; skipping message")
-                return
-            if len(msg) > TELEGRAM_MSG_MAX:
+            # Asegurarse mensaje no demasiado largo para Telegram
+            if len(msg) <= TELEGRAM_MSG_MAX:
+                await self.telegram.send_message(msg)
+            else:
                 for i in range(0, len(msg), TELEGRAM_MSG_MAX):
                     await self.telegram.send_message(msg[i:i+TELEGRAM_MSG_MAX])
-            else:
-                await self.telegram.send_message(msg)
-            self._telegram_fail_count = 0
         except Exception as e:
-            logger.warning("Telegram message failed: %s", e)
-            self._telegram_fail_count += 1
-            if self._telegram_fail_count >= self._telegram_fail_threshold:
-                logger.error("Telegram failing %d times, disabling temporarily", self._telegram_fail_count)
-                self._recent_telegram_disabled = True
+            # En teoría TelegramNotifier no debería lanzar, pero lo protegemos
+            logger.warning("Telegram message enqueue failed: %s", e)
 
     async def refresh_symbols(self):
         try:
@@ -86,11 +102,15 @@ class CryptoBot:
     async def _create_bracket_order(self, symbol: str, side: str, quantity: float,
                                     entry_price: float, stop_price: float, take_profit_price: float,
                                     wait_timeout: int = 30) -> Tuple[Optional[Any], Optional[Any], Optional[Any]]:
+        """
+        Crea la orden de entrada LIMIT y las órdenes SL/TP como reduceOnly.
+        Devuelve (entry_order, stop_order, tp_order) o None cuando no se pudo crear.
+        """
         entry_order = stop_order = tp_order = None
         close_side = "SELL" if side.upper() == "BUY" else "BUY"
         position_side = "LONG" if side.upper() == "BUY" else "SHORT"
 
-        # Create entry
+        # Entry limit
         try:
             params_entry = {"timeInForce": "GTC", "positionSide": position_side}
             entry_order = await self.exchange.create_order(symbol, "limit", side, quantity, entry_price, params_entry)
@@ -98,41 +118,28 @@ class CryptoBot:
         except Exception as e:
             raise Exception(f"No se pudo crear orden LIMIT de entrada para {symbol}: {e}") from e
 
-        # Create SL
+        # Stop loss (intentamos stop_limit; si falla el client intenta fallback a stop_market)
         try:
-            params_sl = {
-                "stopPrice": stop_price,
-                "reduceOnly": True,
-                "timeInForce": "GTC",
-                "positionSide": position_side
-            }
+            params_sl = {"stopPrice": stop_price, "reduceOnly": True, "timeInForce": "GTC", "positionSide": position_side}
             stop_order = await self.exchange.create_order(symbol, "stop_limit", close_side, quantity, stop_price, params_sl)
-            logger.info("SL stop-limit creado %s: %s", symbol, stop_order)
+            logger.info("SL creado %s: %s", symbol, stop_order)
         except Exception as e:
             logger.warning("Crear SL falló para %s: %s", symbol, e)
             stop_order = None
 
-        # Create TP
+        # Take profit (intento take_profit_limit; client puede fallback a take_profit_market)
         try:
-            params_tp = {
-                "stopPrice": take_profit_price,
-                "reduceOnly": True,
-                "timeInForce": "GTC",
-                "positionSide": position_side
-            }
+            params_tp = {"stopPrice": take_profit_price, "reduceOnly": True, "timeInForce": "GTC", "positionSide": position_side}
             tp_order = await self.exchange.create_order(symbol, "take_profit_limit", close_side, quantity, take_profit_price, params_tp)
-            logger.info("TP take-profit-limit creado %s: %s", symbol, tp_order)
+            logger.info("TP creado %s: %s", symbol, tp_order)
         except Exception as e:
             logger.warning("Crear TP falló para %s: %s", symbol, e)
             tp_order = None
 
-        # --- Enviar confirmación a Telegram: qué órdenes se pudieron crear ---
+        # Confirmación por Telegram: indicar qué órdenes se crearon
         try:
             created_msgs = []
-            if entry_order:
-                created_msgs.append("Entry ✅")
-            else:
-                created_msgs.append("Entry ❌")
+            created_msgs.append("Entry ✅" if entry_order else "Entry ❌")
             created_msgs.append("SL ✅" if stop_order else "SL ❌")
             created_msgs.append("TP ✅" if tp_order else "TP ❌")
             msg = f"📥 {symbol} {position_side} LIMIT @ {entry_price:.6f}\n" \
@@ -227,7 +234,7 @@ class CryptoBot:
             except Exception:
                 pass
 
-            # registrar posición con quantity y order ids
+            # registrar posición con quantity y order ids (entry_filled/entry_avg pueden actualizarse por el monitor)
             self.state.register_open_position(sym, signal, entry, quantity, sl, tp, entry_order_id=entry_id, sl_order_id=sl_id, tp_order_id=tp_id)
 
             if entry_order:
@@ -266,79 +273,110 @@ class CryptoBot:
             await asyncio.sleep(1)
 
     # --------------------
-    # Monitor para detectar ejecución de SL/TP y notificar con PnL
+    # Monitor para detectar ejecución de SL/TP y notificar con PnL (mejorado)
     # --------------------
     async def monitor_order_fills(self, poll_interval: float = 2.0):
+        """
+        Maneja entry fills, partial fills y cierres por SL/TP:
+         - actualiza entry_avg/entry_filled cuando la entry se ejecuta (parcial o total)
+         - cuando SL/TP se ejecuta (filled > 0) calcula PnL usando avg y cantidad ejecutada
+         - cancela la orden opuesta y registra el cierre
+         - notifica por Telegram el cierre con PnL y razón
+        """
         while True:
             try:
                 open_positions = self.state.get_open_positions().copy()
-                for sym, pos in open_positions.items():
+                for sym, pos in list(open_positions.items()):
+                    entry_id = pos.get("entry_order_id")
                     sl_id = pos.get("sl_order_id")
                     tp_id = pos.get("tp_order_id")
-                    entry_price = pos.get("entry")
-                    side = pos.get("side")
-                    quantity = float(pos.get("quantity", 0.0))
+                    side = pos.get("side")  # "long" | "short"
+                    intended_qty = float(pos.get("quantity", 0.0))
+                    entry_price = float(pos.get("entry") or 0.0)
+                    entry_avg = pos.get("entry_avg")  # puede ser None
+                    entry_filled = float(pos.get("entry_filled", 0.0))
+                    closed_flag = pos.get("closed", False)
+                    if closed_flag:
+                        continue
 
-                    # comprobar SL
+                    # 1) Revisar ejecución de la entry (parciales)
+                    if entry_id:
+                        order = await self.exchange.fetch_order(entry_id, sym)
+                        if order:
+                            filled = float(order.get("filled") or order.get("info", {}).get("executedQty") or 0.0)
+                            avg = order.get("average") or order.get("info", {}).get("avgPrice")
+                            try:
+                                avg = float(avg) if avg is not None else None
+                            except Exception:
+                                avg = None
+                            if filled and filled != entry_filled:
+                                pos["entry_filled"] = filled
+                                pos["entry_avg"] = avg or entry_price
+                                pos["quantity"] = filled
+                                self.state.open_positions[sym] = pos
+                                logger.info("Entry filled update %s: filled=%s avg=%s", sym, filled, avg)
+                                await self.safe_send_telegram(f"✳️ {sym} ENTRY ejecutada {side.upper()} qty={filled:.6f} avg={pos['entry_avg']:.6f}")
+
+                    # Helper para procesar un order id (SL o TP)
+                    async def _process_close_order(order_id, reason_label):
+                        if not order_id:
+                            return False
+                        order = await self.exchange.fetch_order(order_id, sym)
+                        if not order:
+                            return False
+                        filled = float(order.get("filled") or order.get("info", {}).get("executedQty") or 0.0)
+                        avg = order.get("average") or order.get("info", {}).get("avgPrice")
+                        try:
+                            avg = float(avg) if avg is not None else None
+                        except Exception:
+                            avg = None
+                        if filled <= 0:
+                            return False
+                        # cantidad cerrada
+                        qty_closed = filled
+                        entry_used = float(pos.get("entry_avg") or pos.get("entry") or 0.0)
+                        pnl = 0.0
+                        try:
+                            close_price = avg or order.get("price") or pos.get("sl") or pos.get("tp")
+                            if side == "long":
+                                pnl = (float(close_price) - entry_used) * qty_closed
+                            else:
+                                pnl = (entry_used - float(close_price)) * qty_closed
+                        except Exception:
+                            pnl = 0.0
+                        # registrar y notificar
+                        self.state.register_closed_position(sym, pnl, reason_label, close_price=close_price, close_order_id=order_id)
+                        # cancelar opuesta
+                        opp_id = pos.get("tp_order_id") if reason_label == "SL" else pos.get("sl_order_id")
+                        if opp_id:
+                            try:
+                                await self.exchange.cancel_order(opp_id, sym)
+                            except Exception:
+                                logger.debug("Cancel of opposite order failed for %s: %s", sym, opp_id)
+                        # marcar cerrada
+                        pos["closed"] = True
+                        self.state.open_positions.pop(sym, None)
+                        # Notificar
+                        if reason_label == "TP":
+                            await self.safe_send_telegram(f"🏁 {sym} cerrada por TP. PnL: {pnl:.2f} USDT | Qty: {qty_closed:.6f} | Entry {entry_used:.6f} -> Close {close_price}")
+                        else:
+                            await self.safe_send_telegram(f"🔒 {sym} cerrada por SL. PnL: {pnl:.2f} USDT | Qty: {qty_closed:.6f} | Entry {entry_used:.6f} -> Close {close_price}")
+                        return True
+
+                    # 2) Procesar SL primero, luego TP
                     if sl_id:
-                        order = await self.exchange.fetch_order(sl_id, sym)
-                        if order:
-                            status = (order.get("status") or "").lower()
-                            filled = float(order.get("filled") or 0.0)
-                            avg = order.get("average") or order.get("info", {}).get("avgPrice")
-                            try:
-                                avg = float(avg) if avg is not None else None
-                            except Exception:
-                                avg = None
-                            if filled > 0 and status in ("closed", "canceled") or status == "closed" or (order.get("info", {}).get("status", "").upper() == "FILLED"):
-                                # asumimos cierre por SL
-                                close_price = avg or order.get("price") or pos.get("sl")
-                                pnl = 0.0
-                                try:
-                                    if close_price is not None:
-                                        if side == "long":
-                                            pnl = (float(close_price) - float(entry_price)) * filled
-                                        else:
-                                            pnl = (float(entry_price) - float(close_price)) * filled
-                                except Exception:
-                                    pnl = 0.0
-                                # registrar y notificar
-                                self.state.register_closed_position(sym, pnl, "SL", close_price, sl_id)
-                                await self.safe_send_telegram(f"🔒 {sym} cerrada por SL. PnL: {pnl:.2f} USDT | Qty: {filled:.6f} | Entry {entry_price:.6f} -> Close {close_price}")
-                                # intentar cancelar TP si existe
-                                if tp_id:
-                                    await self.exchange.cancel_order(tp_id, sym)
-                                continue
+                        sl_triggered = await _process_close_order(sl_id, "SL")
+                        if sl_triggered:
+                            continue
 
-                    # comprobar TP
                     if tp_id:
-                        order = await self.exchange.fetch_order(tp_id, sym)
-                        if order:
-                            status = (order.get("status") or "").lower()
-                            filled = float(order.get("filled") or 0.0)
-                            avg = order.get("average") or order.get("info", {}).get("avgPrice")
-                            try:
-                                avg = float(avg) if avg is not None else None
-                            except Exception:
-                                avg = None
-                            if filled > 0 and status in ("closed", "canceled") or status == "closed" or (order.get("info", {}).get("status", "").upper() == "FILLED"):
-                                close_price = avg or order.get("price") or pos.get("tp")
-                                pnl = 0.0
-                                try:
-                                    if close_price is not None:
-                                        if side == "long":
-                                            pnl = (float(close_price) - float(entry_price)) * filled
-                                        else:
-                                            pnl = (float(entry_price) - float(close_price)) * filled
-                                except Exception:
-                                    pnl = 0.0
-                                self.state.register_closed_position(sym, pnl, "TP", close_price, tp_id)
-                                await self.safe_send_telegram(f"🏁 {sym} cerrada por TP. PnL: {pnl:.2f} USDT | Qty: {filled:.6f} | Entry {entry_price:.6f} -> Close {close_price}")
-                                # intentar cancelar SL si existe
-                                if sl_id:
-                                    await self.exchange.cancel_order(sl_id, sym)
-                                continue
+                        tp_triggered = await _process_close_order(tp_id, "TP")
+                        if tp_triggered:
+                            continue
+
                 await asyncio.sleep(poll_interval)
+            except asyncio.CancelledError:
+                break
             except Exception as e:
                 logger.exception("Error en monitor_order_fills: %s", e)
                 await asyncio.sleep(5)
@@ -389,7 +427,7 @@ async def main():
         tasks.append(asyncio.create_task(periodic_report(bot)))
         tasks.append(asyncio.create_task(monitor_positions(bot)))
         tasks.append(asyncio.create_task(watchdog_loop(bot)))
-        # nuevo: monitor de fills
+        # monitor de fills
         tasks.append(asyncio.create_task(bot.monitor_order_fills()))
         await bot.run_trading_loop()
     except KeyboardInterrupt:
