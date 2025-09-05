@@ -33,7 +33,11 @@ USE_TESTNET = _get_env("USE_TESTNET", True, _bool)
 DRY_RUN = _get_env("DRY_RUN", False, _bool)
 
 # --- Trading ---
+# legacy / .env compatibility: DAILY_PROFIT_TARGET_USD is kept, y además exponemos DAILY_PROFIT_TARGET
 DAILY_PROFIT_TARGET_USD = _get_env("DAILY_PROFIT_TARGET_USD", 50.0, _float)
+# Some parts of the code expect DAILY_PROFIT_TARGET (no sufijo). Allow either:
+DAILY_PROFIT_TARGET = _get_env("DAILY_PROFIT_TARGET", DAILY_PROFIT_TARGET_USD, _float)
+
 MAX_INVESTMENT = _get_env("MAX_INVESTMENT", 2000.0, _float)
 TRADING_PAIRS = _get_env("TRADING_PAIRS", "BTC/USDT,ETH/USDT", _list_str)
 STRATEGY = _get_env("STRATEGY", "scalping_ema_rsi")
