@@ -127,6 +127,64 @@ class BinanceClient:
             return sorted(list(markets.keys()))
         return []
 
+    async def fetch_24h_change(self, symbol: str) -> Optional[float]:
+        """
+        Return 24h change percentage for `symbol` as a float (e.g. 1.23 for +1.23%).
+        Tries several ccxt/Exchange fields and falls back to computing from open/last.
+        Returns None if it cannot determine a value.
+        """
+        await self._ensure_exchange()
+        ticker = None
+        # try several symbol formats if needed
+        candidates = [symbol, symbol.replace("/", ""), symbol.replace("/", "") + "USDT" if "/" in symbol else symbol]
+        last_exc = None
+        for cand in candidates:
+            try:
+                ticker = await self.exchange.fetch_ticker(cand)
+                if ticker:
+                    break
+            except Exception as e:
+                last_exc = e
+                continue
+        if not ticker:
+            logger.debug("fetch_24h_change: could not fetch ticker for %s (%s)", symbol, last_exc)
+            return None
+
+        # ccxt standard field
+        perc = None
+        try:
+            if isinstance(ticker, dict):
+                perc = ticker.get("percentage")
+                if perc is None:
+                    # try nested 'info' fields common in Binance
+                    info = ticker.get("info") or {}
+                    # Binance futures often has priceChangePercent or priceChange
+                    for key in ("priceChangePercent", "priceChange", "priceChangePct", "pricePercent"):
+                        if key in info and info.get(key) is not None:
+                            try:
+                                perc = float(info.get(key))
+                                break
+                            except Exception:
+                                pass
+                if perc is None:
+                    # compute from open/last if available
+                    last = ticker.get("last")
+                    open_ = ticker.get("open") or ticker.get("openPrice") or (ticker.get("info") or {}).get("openPrice")
+                    if last is not None and open_ not in (None, 0):
+                        try:
+                            perc = (float(last) - float(open_)) / float(open_) * 100.0
+                        except Exception:
+                            perc = None
+        except Exception:
+            perc = None
+
+        if perc is None:
+            return None
+        try:
+            return float(perc)
+        except Exception:
+            return None
+
     async def _is_dual_position_mode(self) -> bool:
         if self._dual_position_mode is not None:
             return self._dual_position_mode
