@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from typing import Any, Dict, Optional
 
 import ccxt.async_support as ccxt
@@ -14,27 +15,28 @@ class BinanceClient:
         api_secret: str,
         use_testnet: bool = False,
         enable_rate_limit: bool = True,
+        dry_run: bool = False,
+        **kwargs,
     ):
         """
-        Cliente ligero para Binance (ccxt async). Este fichero contiene la lógica para:
-         - inicializar el exchange (futures por defecto)
-         - comprobar modo de posición (dual/hedge) y cachearlo
-         - crear órdenes asegurando positionSide coherente
+        Compatible wrapper around ccxt.binance (async) for Binance Futures.
+        - Accepts dry_run for backwards compatibility (no-op simulation mode).
+        - Accepts extra kwargs to avoid unexpected-arg errors.
+        - Uses futures (USDT-M) by default.
         """
         self.api_key = api_key
         self.api_secret = api_secret
         self.use_testnet = bool(use_testnet)
         self.enable_rate_limit = bool(enable_rate_limit)
+        self.dry_run = bool(dry_run)
         self.exchange: Optional[ccxt.binance] = None
         self._dual_position_mode: Optional[bool] = None
-        # lock para inicialización segura
         self._init_lock = asyncio.Lock()
 
+    def set_dry_run(self, enabled: bool) -> None:
+        self.dry_run = bool(enabled)
+
     async def _ensure_exchange(self) -> None:
-        """
-        Inicializa y configura la instancia ccxt.binance (async).
-        Es idempotente y segura para llamadas concurrentes.
-        """
         if self.exchange is not None:
             return
         async with self._init_lock:
@@ -45,13 +47,11 @@ class BinanceClient:
                 "secret": self.api_secret,
                 "enableRateLimit": self.enable_rate_limit,
                 "options": {
-                    "defaultType": "future",  # usar futures (USDT-M)
+                    "defaultType": "future",
                     "adjustForTimeDifference": True,
                 },
             }
-
             if self.use_testnet:
-                # endpoints de futures testnet
                 params["urls"] = {
                     "api": {
                         "public": "https://testnet.binancefuture.com",
@@ -63,22 +63,19 @@ class BinanceClient:
 
             self.exchange = ccxt.binance(params)
 
-            # si ccxt expone set_sandbox_mode, usamos
             try:
                 if hasattr(self.exchange, "set_sandbox_mode"):
                     try:
                         self.exchange.set_sandbox_mode(self.use_testnet)
                     except Exception:
-                        # no crítico
                         pass
             except Exception:
                 pass
 
-            # cargar mercados para inicializar símbolos/market data
             try:
                 await self.exchange.load_markets()
             except Exception as e:
-                logger.debug("load_markets fallo durante init: %s", e)
+                logger.debug("load_markets failed during init: %s", e)
 
     async def close(self) -> None:
         if self.exchange:
@@ -89,25 +86,17 @@ class BinanceClient:
             self.exchange = None
 
     async def fetch_balance(self) -> Dict[str, Any]:
-        """
-        Wrapper para fetch_balance que garantiza inicialización.
-        """
         await self._ensure_exchange()
         return await self.exchange.fetch_balance()
 
     async def fetch_time(self) -> Optional[int]:
-        """
-        Devuelve server time (ms) si disponible, None si falla.
-        """
         await self._ensure_exchange()
         try:
             return await self.exchange.fetch_time()
         except Exception:
-            # intentar endpoint directo fapiPublicGetTime si existe
             try:
                 if hasattr(self.exchange, "fapiPublicGetTime"):
                     info = await self.exchange.fapiPublicGetTime()
-                    # info puede tener 'serverTime' o 'time'
                     if isinstance(info, dict):
                         return int(info.get("serverTime", info.get("time", 0)))
             except Exception:
@@ -115,24 +104,18 @@ class BinanceClient:
         return None
 
     async def _is_dual_position_mode(self) -> bool:
-        """
-        Comprueba si la cuenta FUTURES está en Hedge (dual) mode.
-        Cachea el resultado en self._dual_position_mode para evitar llamadas repetidas.
-        """
         if self._dual_position_mode is not None:
             return self._dual_position_mode
 
         await self._ensure_exchange()
         val = False
         try:
-            # endpoint fapi: positionSide/dual
             resp = await self.exchange.request("positionSide/dual", "fapiPrivate", "GET", {})
             if isinstance(resp, dict):
                 v = resp.get("dualSidePosition")
                 val = v in (True, "true", "True", "1", 1)
         except Exception as e:
-            # Si falla la consulta asumimos One-way (más seguro) y continuamos.
-            logger.debug("No se pudo consultar positionSide/dual: %s", e)
+            logger.debug("Could not query positionSide/dual: %s", e)
             val = False
 
         self._dual_position_mode = bool(val)
@@ -140,10 +123,6 @@ class BinanceClient:
         return self._dual_position_mode
 
     async def refresh_position_mode_cache(self) -> bool:
-        """
-        Fuerza reconsulta del modo de posición (útil si cambias el modo en la UI sin reiniciar el bot).
-        Devuelve el nuevo valor (True si Hedge).
-        """
         self._dual_position_mode = None
         return await self._is_dual_position_mode()
 
@@ -157,15 +136,14 @@ class BinanceClient:
         params: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
-        Envoltorio de create_order que ajusta positionSide según el modo de la cuenta.
-        - Si la cuenta está en Hedge (dual) mode y no se pasó positionSide, lo añade en base a `side`.
-        - Si la cuenta NO está en Hedge mode eliminará positionSide para evitar -4061.
+        Wrapper around exchange.create_order that:
+         - ensures positionSide matches account mode (hedge vs one-way)
+         - respects dry_run by returning a simulated order instead of calling the API
         """
         await self._ensure_exchange()
         params = dict(params or {})
 
         try:
-            # Detectar mode dual/hedge (cacheado)
             try:
                 dual = await self._is_dual_position_mode()
             except Exception:
@@ -174,14 +152,12 @@ class BinanceClient:
             side_l = (side or "").lower() if isinstance(side, str) else None
 
             if dual:
-                # En Hedge mode positionSide es relevante; si no está pasado lo establecemos
                 if "positionSide" not in params:
                     if side_l == "buy":
                         params["positionSide"] = "LONG"
                     elif side_l == "sell":
                         params["positionSide"] = "SHORT"
                 else:
-                    # normalizar si se pasó (asegurar LONG/SHORT)
                     try:
                         ps = str(params.get("positionSide")).upper()
                         if ps in ("LONG", "SHORT", "BOTH"):
@@ -189,28 +165,51 @@ class BinanceClient:
                     except Exception:
                         pass
             else:
-                # En One-way mode no enviar positionSide
                 if "positionSide" in params:
                     params.pop("positionSide", None)
 
-            # Hacer la llamada real a ccxt
+            if self.dry_run:
+                ts = int(time.time() * 1000)
+                fake_id = f"dryrun-{ts}"
+                logger.info("dry_run active: simulating create_order %s %s %s %s @ %s params=%s", symbol, type, side, amount, price, params)
+                simulated = {
+                    "info": {
+                        "orderId": fake_id,
+                        "symbol": symbol.replace("/", ""),
+                        "status": "NEW",
+                        "price": str(price) if price is not None else "0",
+                        "origQty": str(amount) if amount is not None else "0",
+                        "executedQty": "0.000",
+                        "side": side.upper(),
+                        "positionSide": params.get("positionSide"),
+                    },
+                    "id": fake_id,
+                    "clientOrderId": f"dry-{fake_id}",
+                    "timestamp": ts,
+                    "datetime": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(ts / 1000.0)) + "Z",
+                    "symbol": f"{symbol}:USDT",
+                    "type": type,
+                    "timeInForce": params.get("timeInForce", "GTC"),
+                    "side": side.lower(),
+                    "price": price,
+                    "amount": amount,
+                    "filled": 0.0,
+                    "remaining": amount or 0.0,
+                    "status": "open" if (amount and amount > 0) else "canceled",
+                }
+                return simulated
+
             result = await self.exchange.create_order(symbol, type, side, amount, price, params or {})
             return result
 
         except Exception as e:
-            # Loguear contexto y re-raise
             try:
                 logger.exception("create_order failed for %s %s %s %s: %s", symbol, type, side, amount, e)
             except Exception:
                 pass
             raise
 
-    # utilitario para extraer la última petición/response (útil para debugging)
     def get_last_request_info(self) -> Dict[str, Any]:
-        """
-        Devuelve un diccionario con la última petición y respuesta guardadas por ccxt (si existen).
-        No imprime firmas; sirve para debug seguro.
-        """
         info: Dict[str, Any] = {}
         if not self.exchange:
             return info
