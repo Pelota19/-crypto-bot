@@ -6,15 +6,15 @@ Cambios / mejoras aplicadas:
 - Añade opción use_testnet para forzar los endpoints de testnet.binancefuture.com.
 - Activa options['adjustForTimeDifference'] para sincronizar timestamps con el servidor.
 - Mantiene compatibilidad con el resto del código (métodos: fetch_all_symbols, fetch_ohlcv, create_order, etc.).
-- Añade parámetro verbose para debugging de CCXT (muestra request/response).
-- *** NUEVO: Añade método para configurar Hedge Mode (dualSidePosition) automáticamente. ***
+- Añade método para configurar Hedge Mode (dualSidePosition) automáticamente.
+- *** CORRECCIÓN: Busca BINANCE_API_SECRET en lugar de BINANCE_SECRET. ***
 """
 import logging
 from typing import Optional, Any, List
 import os
 
 import ccxt.async_support as ccxt
-from ccxt.base.errors import BadRequest, ExchangeError, NetworkError, RequestTimeout
+from ccxt.base.errors import BadRequest, ExchangeError, NetworkError, RequestTimeout, AuthenticationError
 
 logger = logging.getLogger(__name__)
 
@@ -30,13 +30,14 @@ class BinanceClient:
     ):
         """
         Constructor:
-        - api_key/api_secret: si no se pasan, se leen de env BINANCE_API_KEY / BINANCE_SECRET
+        - api_key/api_secret: si no se pasan, se leen de env BINANCE_API_KEY / BINANCE_API_SECRET
         - use_testnet: apunta a testnet.binancefuture.com para USDT-M futures
         - dry_run: no crea órdenes reales, devuelve objeto simulado
         - verbose: activa exchange.verbose para debug (no compartir signatures)
         """
         # Leer y recortar credenciales (evita saltos de línea o espacios accidentales)
         api_key = (api_key or os.getenv("BINANCE_API_KEY") or "").strip()
+        # --- LÍNEA CORREGIDA ---
         api_secret = (api_secret or os.getenv("BINANCE_API_SECRET") or "").strip()
 
         if not api_key or not api_secret:
@@ -79,16 +80,14 @@ class BinanceClient:
             self.exchange.verbose = True
         try:
             await self.exchange.load_markets()
+        except AuthenticationError as e:
+            logger.critical("Authentication failed while loading markets: %s. Check your API keys.", e)
+            raise
         except Exception as e:
             logger.warning("Warning loading markets for BinanceClient: %s", e)
         self._initialized = True
 
     async def set_hedge_mode(self, enable: bool = True) -> bool:
-        """
-        Sets the position mode to Hedge Mode (dual side) or One-way Mode.
-        :param enable: True for Hedge Mode, False for One-way Mode.
-        :return: True if successful, False otherwise.
-        """
         await self._ensure_exchange()
         mode_str = "true" if enable else "false"
         mode_name = "Hedge Mode" if enable else "One-way Mode"
@@ -114,6 +113,9 @@ class BinanceClient:
             else:
                 logger.error(f"Failed to set position mode to {mode_name}. Response: {response}")
                 return False
+        except AuthenticationError as e:
+            logger.exception(f"AuthenticationError while setting position mode. Check API Key permissions/IP. Error: {e}")
+            raise
         except Exception as e:
             logger.exception(f"Exception while setting position mode to {mode_name}: {e}")
             return False
