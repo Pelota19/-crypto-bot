@@ -2,3 +2,34 @@ __pycache__/
 *.pyc
 data/
 .env
+# Virtual envs
+.venv/
+venv/
+env/
+ENV/
+
+# Python caches
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Logs
+logs/
+*.log
+*.log.*
+
+# Backup/temp
+*.bak
+*~
+*.tmp
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
