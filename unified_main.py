@@ -21,6 +21,13 @@ from os import getenv
 import os
 import math
 
+# Load .env early so getenv reads values from .env (optional: wrapped in try/except)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
+
 from src.config import (
     API_KEY, API_SECRET, USE_TESTNET, DRY_RUN, DAILY_PROFIT_TARGET,
     TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, HEDGE_MODE
@@ -49,6 +56,7 @@ TP_TIMEOUT_SEC = int(getenv("TP_TIMEOUT_SEC", "10"))
 ENTRY_FILL_TIMEOUT_SEC = int(getenv("ENTRY_FILL_TIMEOUT_SEC", "60"))
 USE_MARK_PRICE_FOR_SL = getenv("USE_MARK_PRICE_FOR_SL", "True").lower() in ("1", "true", "yes")
 MIN_TP_DISTANCE_PCT = float(getenv("MIN_TP_DISTANCE_PCT", "0.0002"))
+# THRESHOLD para filtrar pares por cambio 24h (configurable en .env)
 PCT_CHANGE_24H = float(getenv("PCT_CHANGE_24H", "10.0"))
 
 TELEGRAM_RATE_PER_MIN = int(getenv("TELEGRAM_RATE_PER_MIN", "30"))
@@ -86,6 +94,7 @@ class CryptoBot:
         try:
             syms = await self.exchange.fetch_all_symbols()
             filtered_syms = []
+            # Note: this is still one API call per symbol for 24h change; can be optimized later
             for sym in syms:
                 change_pct = await self.exchange.fetch_24h_change(sym)
                 if change_pct is not None and change_pct >= PCT_CHANGE_24H:
@@ -138,7 +147,6 @@ class CryptoBot:
         return qty
 
     def _compute_qty_by_risk(self, entry_price: float, stop_loss_pct: float, risk_usdt: float) -> float:
-        # calcula SL desde entry_price
         sl = entry_price * (1 - stop_loss_pct)
         distance = abs(entry_price - sl)
         if distance <= 0:
