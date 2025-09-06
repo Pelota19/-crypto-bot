@@ -1,19 +1,21 @@
 """
 Unified CryptoBot - Binance Futures (USDT-M) - FULL SCAN (sin watchlist)
 
-Versión con un único punto de notificación:
-- monitor_order_fills es el único que envía mensajes a Telegram para:
-  * ejecución de entry (parciales/total)
-  * cierres por SL o TP (notifica PnL, intenta PnL neto con trades)
-- monitor_positions ya NO envía notificaciones para evitar duplicados.
+Versión "v7-full" — archivo autónomo que incluye:
+- Integración con ScalpingOrderManager (ENTRY LIMIT -> wait fill -> SL STOP_MARKET MARK_PRICE -> TP TAKE_PROFIT_LIMIT -> TP_TIMEOUT -> TP_MARKET fallback)
+- Monitor de fills completo (único punto de notificación), cálculo PnL con trades, manejo de partial fills y cancelación de órdenes opuestas.
+- Todo configurable vía .env (se leen variables con os.getenv)
 """
 
 import asyncio
 import logging
 import pandas as pd
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional, Tuple, Any
+from typing import List, Optional, Tuple, Any, Dict
 from os import getenv
+import os
+import math
+import time
 
 from src.config import (
     API_KEY, API_SECRET, USE_TESTNET, DRY_RUN, POSITION_SIZE_PERCENT, MAX_OPEN_TRADES,
@@ -24,27 +26,33 @@ from src.config import (
 from src.exchange.binance_client import BinanceClient
 from src.notifier.telegram_notifier import TelegramNotifier
 from src.state_manager import StateManager
+from src.trading.scalping_order_manager import ScalpingOrderManager
 from ta.trend import EMAIndicator
 from ta.momentum import RSIIndicator
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ===== Parámetros de riesgo/estrategia =====
-CAPITAL_TOTAL = 2000.0
-STOP_LOSS_PORCENTAJE = 0.2 / 100      # 0.20%
-RISK_REWARD_RATIO = 1.5
+# ===== Parámetros (desde env con valores por defecto) =====
+CAPITAL_TOTAL = float(getenv("CAPITAL_TOTAL", "2000.0"))
+POSITION_SIZE_PERCENT = float(getenv("POSITION_SIZE_PERCENT", "0.025"))
+MAX_TRADE_USDT = float(getenv("MAX_TRADE_USDT", "50"))
+MIN_NOTIONAL_USD = float(getenv("MIN_NOTIONAL_USD", "1.0"))
+LEVERAGE = float(getenv("LEVERAGE", "1"))
+STOP_LOSS_PCT = float(getenv("STOP_LOSS_PCT", "0.002"))
+RISK_REWARD_RATIO = float(getenv("RISK_REWARD_RATIO", "2.0"))
+TP_TIMEOUT_SEC = int(getenv("TP_TIMEOUT_SEC", "10"))
+ENTRY_FILL_TIMEOUT_SEC = int(getenv("ENTRY_FILL_TIMEOUT_SEC", "60"))
+USE_MARK_PRICE_FOR_SL = getenv("USE_MARK_PRICE_FOR_SL", "True").lower() in ("1", "true", "yes")
+PCT_CHANGE_24H = float(getenv("PCT_CHANGE_24H", "10.0"))
+
+TELEGRAM_RATE_PER_MIN = int(getenv("TELEGRAM_RATE_PER_MIN", "30"))
+MAX_OPERATIONS_SIMULTANEAS = int(getenv("MAX_OPEN_TRADES", "6"))
+
 TIMEFRAME_SIGNAL = "1m"
 TIMEFRAME_TENDENCIA = "15m"
-MAX_OPERATIONS_SIMULTANEAS = MAX_OPEN_TRADES
-MAX_TRADE_USDT = 50                   # tope por trade
-REFRESH_SYMBOLS_MINUTES = 15          # refresh cada 15 min
+REFRESH_SYMBOLS_MINUTES = int(getenv("REFRESH_SYMBOLS_MINUTES", "15"))
 TELEGRAM_MSG_MAX = 4000
-PCT_CHANGE_24H = float(getenv("PCT_CHANGE_24H", "10.0"))  # 10% por defecto, configurable en .env
-
-# Telegram rate limit (mensajes por minuto) - ajustable por .env si lo deseas
-TELEGRAM_RATE_PER_MIN = int(getenv("TELEGRAM_RATE_PER_MIN", "30"))
-
 
 class CryptoBot:
     def __init__(self):
@@ -57,17 +65,13 @@ class CryptoBot:
         self.telegram = TelegramNotifier(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, rate_limit_per_min=TELEGRAM_RATE_PER_MIN)
         # State manager
         self.state = StateManager(daily_profit_target=DAILY_PROFIT_TARGET)
+        # Scalping manager
+        self.scalper = ScalpingOrderManager(self.exchange, self.state, notifier=self.telegram, tp_timeout=TP_TIMEOUT_SEC, entry_fill_timeout=ENTRY_FILL_TIMEOUT_SEC, hedge_mode=HEDGE_MODE)
         self._stop_event = asyncio.Event()
         self.last_loop_heartbeat = datetime.now(timezone.utc)
         self.symbols: List[str] = []
-        # Internal small guard
-        self._recent_telegram_disabled = False
 
     async def safe_send_telegram(self, msg: str):
-        """
-        Encola un mensaje para Telegram de forma segura (no bloqueante).
-        El TelegramNotifier se encarga del rate limit y del manejo de 429.
-        """
         try:
             if len(msg) <= TELEGRAM_MSG_MAX:
                 await self.telegram.send_message(msg)
@@ -91,57 +95,6 @@ class CryptoBot:
         except Exception as e:
             logger.exception("Error refrescando símbolos: %s", e)
             await self.safe_send_telegram(f"❌ Error refrescando símbolos: {e}")
-
-    async def _create_bracket_order(self, symbol: str, side: str, quantity: float,
-                                    entry_price: float, stop_price: float, take_profit_price: float,
-                                    wait_timeout: int = 30) -> Tuple[Optional[Any], Optional[Any], Optional[Any]]:
-        """
-        Crea la orden de entrada LIMIT y las órdenes SL/TP como reduceOnly.
-        Devuelve (entry_order, stop_order, tp_order) o None cuando no se pudo crear.
-        """
-        entry_order = stop_order = tp_order = None
-        close_side = "SELL" if side.upper() == "BUY" else "BUY"
-        position_side = "LONG" if side.upper() == "BUY" else "SHORT"
-
-        # Entry limit
-        try:
-            params_entry = {"timeInForce": "GTC", "positionSide": position_side}
-            entry_order = await self.exchange.create_order(symbol, "limit", side, quantity, entry_price, params_entry)
-            logger.info("LIMIT entry creada %s: %s", symbol, entry_order)
-        except Exception as e:
-            raise Exception(f"No se pudo crear orden LIMIT de entrada para {symbol}: {e}") from e
-
-        # Stop loss (intentamos stop_limit; si falla el client intenta fallback a stop_market)
-        try:
-            params_sl = {"stopPrice": stop_price, "reduceOnly": True, "timeInForce": "GTC", "positionSide": position_side}
-            stop_order = await self.exchange.create_order(symbol, "stop_limit", close_side, quantity, stop_price, params_sl)
-            logger.info("SL creado %s: %s", symbol, stop_order)
-        except Exception as e:
-            logger.warning("Crear SL falló para %s: %s", symbol, e)
-            stop_order = None
-
-        # Take profit (intento take_profit_limit; client puede fallback a take_profit_market)
-        try:
-            params_tp = {"stopPrice": take_profit_price, "reduceOnly": True, "timeInForce": "GTC", "positionSide": position_side}
-            tp_order = await self.exchange.create_order(symbol, "take_profit_limit", close_side, quantity, take_profit_price, params_tp)
-            logger.info("TP creado %s: %s", symbol, tp_order)
-        except Exception as e:
-            logger.warning("Crear TP falló para %s: %s", symbol, e)
-            tp_order = None
-
-        # Confirmación por Telegram: indicar qué órdenes se crearon
-        try:
-            created_msgs = []
-            created_msgs.append("Entry ✅" if entry_order else "Entry ❌")
-            created_msgs.append("SL ✅" if stop_order else "SL ❌")
-            created_msgs.append("TP ✅" if tp_order else "TP ❌")
-            msg = f"📥 {symbol} {position_side} LIMIT @ {entry_price:.6f}\n" \
-                  f"{' | '.join(created_msgs)}\nQty {quantity:.6f}"
-            await self.safe_send_telegram(msg)
-        except Exception:
-            logger.exception("Error enviando confirmación de creación de órdenes a Telegram")
-
-        return entry_order, stop_order, tp_order
 
     async def analizar_signal(self, sym: str) -> Optional[str]:
         try:
@@ -179,9 +132,11 @@ class CryptoBot:
             return None
 
     async def ejecutar_trade(self, sym: str, signal: str):
+        # Avoid duplicate open positions
         if sym in getattr(self.state, "open_positions", {}):
             return
-        size_usdt = CAPITAL_TOTAL * POSITION_SIZE_PERCENT
+
+        # derive price and quantity
         try:
             ohlcv = await self.exchange.fetch_ohlcv(sym, timeframe=TIMEFRAME_SIGNAL, limit=1)
             if not ohlcv:
@@ -192,52 +147,42 @@ class CryptoBot:
             await self.safe_send_telegram(f"❌ Error obteniendo precio para {sym}: {e}")
             return
 
+        # sizing per config (percent of capital * leverage)
+        size_usdt = CAPITAL_TOTAL * POSITION_SIZE_PERCENT
         quantity = min(MAX_TRADE_USDT / price, size_usdt / price) * LEVERAGE
         notional = quantity * price
         if notional < MIN_NOTIONAL_USD:
             await self.safe_send_telegram(f"⚠️ Orden ignorada {sym}: Notional {notional:.2f} < min {MIN_NOTIONAL_USD}")
             return
 
-        if signal == "long":
-            entry = price
-            sl = entry * (1 - STOP_LOSS_PORCENTAJE)
-            tp = entry + (entry - sl) * RISK_REWARD_RATIO
-            side = "BUY"
-        elif signal == "short":
-            entry = price
-            sl = entry * (1 + STOP_LOSS_PORCENTAJE)
-            tp = entry - (sl - entry) * RISK_REWARD_RATIO
-            side = "SELL"
-        else:
-            return
-
         try:
-            entry_order, stop_order, tp_order = await self._create_bracket_order(sym, side, quantity, entry, sl, tp)
-            # extraer order ids si existen
-            entry_id = None
-            sl_id = None
-            tp_id = None
-            try:
-                if entry_order and isinstance(entry_order, dict):
-                    entry_id = entry_order.get("id") or entry_order.get("info", {}).get("orderId")
-                if stop_order and isinstance(stop_order, dict):
-                    sl_id = stop_order.get("id") or stop_order.get("info", {}).get("orderId")
-                if tp_order and isinstance(tp_order, dict):
-                    tp_id = tp_order.get("id") or tp_order.get("info", {}).get("orderId")
-            except Exception:
-                pass
-
-            # registrar posición con quantity y order ids (entry_filled/entry_avg pueden actualizarse por el monitor)
-            self.state.register_open_position(sym, signal, entry, quantity, sl, tp, entry_order_id=entry_id, sl_order_id=sl_id, tp_order_id=tp_id)
-
-            if entry_order:
-                await self.safe_send_telegram(
-                    f"✅ {sym} {signal.upper()} LIMIT @ {entry:.6f}\nSL {sl:.6f} | TP {tp:.6f} | Qty {quantity:.6f}"
-                )
+            meta = await self.scalper.place_scalping_trade(
+                symbol=sym,
+                side=signal,
+                entry_price=price,
+                amount=quantity,
+                stop_loss_pct=STOP_LOSS_PCT,
+                rr_ratio=RISK_REWARD_RATIO,
+                tp_timeout=TP_TIMEOUT_SEC,
+                entry_fill_timeout=ENTRY_FILL_TIMEOUT_SEC,
+            )
+            if meta.get("entry_order_id"):
+                await self.safe_send_telegram(f"📥 {sym} {signal.upper()} LIMIT @ {price:.6f}\nQty {quantity:.6f}\nEntry order id: {meta.get('entry_order_id')}")
+                msgs = []
+                if meta.get("sl_order_id"):
+                    msgs.append(f"SL placed id={meta.get('sl_order_id')} type={meta.get('sl_type')}")
+                else:
+                    msgs.append("SL ❌")
+                if meta.get("tp_order_id"):
+                    msgs.append(f"TP placed id={meta.get('tp_order_id')} type={meta.get('tp_type')}")
+                else:
+                    msgs.append("TP ❌")
+                await self.safe_send_telegram(" | ".join(msgs))
             else:
-                await self.safe_send_telegram(f"❌ No se pudo crear orden LIMIT para {sym}")
+                await self.safe_send_telegram(f"❌ Entry order for {sym} could not be placed.")
         except Exception as e:
-            await self.safe_send_telegram(f"❌ Error al abrir {sym}: {e}")
+            logger.exception("Error placing scalping trade for %s: %s", sym, e)
+            await self.safe_send_telegram(f"❌ Error placing scalping trade for {sym}: {e}")
 
     async def procesar_par(self, sym: str):
         signal = await self.analizar_signal(sym)
@@ -266,16 +211,13 @@ class CryptoBot:
             await asyncio.sleep(1)
 
     # --------------------
-    # Monitor para detectar ejecución de SL/TP y notificar con PnL (único punto de notificación)
+    # Monitor completo (único punto de notificación) para detectar ejecución de entry/SL/TP y calcular PnL
     # --------------------
     async def monitor_order_fills(self, poll_interval: float = 2.0):
         """
-        Maneja entry fills, partial fills y cierres por SL/TP:
-         - actualiza entry_avg/entry_filled cuando la entry se ejecuta (parcial o total)
-         - cuando SL/TP se ejecuta (filled > 0) calcula PnL NETO usando trades (si se pueden obtener)
-           y como fallback usa avg * qty aproximado.
-         - cancela la orden opuesta y registra el cierre
-         - notifica por Telegram (único punto de notificación)
+        - Actualiza entry_filled/entry_avg al detectarse fills de la entry
+        - Detecta SL/TP execution, calcula PnL neto (intentando usar trades) y notifica
+        - Cancela orden opuesta al cierre y registra cierre en StateManager
         """
         async def _compute_pnl_from_trades(side: str, entry_order_id: Optional[str], close_order_id: str, sym: str):
             try:
@@ -366,7 +308,6 @@ class CryptoBot:
                             except Exception:
                                 avg = None
                             if filled and filled != entry_filled:
-                                # actualizar state via helper
                                 self.state.update_entry_execution(sym, filled, avg or entry_price)
                                 await self.safe_send_telegram(f"✳️ {sym} ENTRY ejecutada {side.upper()} qty={filled:.6f} avg={avg or entry_price:.6f}")
 
@@ -431,13 +372,13 @@ class CryptoBot:
                         return True
 
                     # 2) Procesar SL primero, luego TP
-                    if sl_id:
-                        sl_triggered = await _process_close_order(sl_id, "SL")
+                    if pos.get("sl_order_id"):
+                        sl_triggered = await _process_close_order(pos.get("sl_order_id"), "SL")
                         if sl_triggered:
                             continue
 
-                    if tp_id:
-                        tp_triggered = await _process_close_order(tp_id, "TP")
+                    if pos.get("tp_order_id"):
+                        tp_triggered = await _process_close_order(pos.get("tp_order_id"), "TP")
                         if tp_triggered:
                             continue
 
@@ -467,20 +408,10 @@ async def periodic_report(bot: CryptoBot):
 
 async def monitor_positions(bot: CryptoBot):
     """
-    Esta función ya NO envía notificaciones para evitar duplicados.
-    La dejamos para mantener la estructura del programa; puede usarse para limpieza
-    o persistencia futura de closed_positions_history.
+    Función de mantenimiento (no notifica). Mantenida por compatibilidad.
     """
     while True:
-        try:
-            # opcional: limpiar closed_positions_history muy antiguas o solo registrar/log
-            # por ahora: solo sleep y log ocasional
-            await asyncio.sleep(60)
-        except asyncio.CancelledError:
-            break
-        except Exception:
-            logger.exception("Error en monitor_positions")
-            await asyncio.sleep(5)
+        await asyncio.sleep(60)
 
 async def watchdog_loop(bot: CryptoBot):
     while True:
@@ -493,10 +424,9 @@ async def main():
     bot = CryptoBot()
     tasks = []
     try:
-        await bot.safe_send_telegram("🚀 CryptoBot iniciado en TESTNET (limit-only orders, full-scan PERPETUAL USDT-M) - notifications centralized")
+        await bot.safe_send_telegram("🚀 CryptoBot iniciado con scalping manager (TP timeout + SL MARK_PRICE)")
         tasks.append(asyncio.create_task(symbols_refresher(bot)))
         tasks.append(asyncio.create_task(periodic_report(bot)))
-        # no añadimos monitor_positions como fuente de notificaciones
         tasks.append(asyncio.create_task(watchdog_loop(bot)))
         # monitor de fills (única fuente de notificaciones)
         tasks.append(asyncio.create_task(bot.monitor_order_fills()))
