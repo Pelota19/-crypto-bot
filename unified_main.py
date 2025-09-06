@@ -27,11 +27,13 @@ try:
     load_dotenv()
 except Exception:
     pass
-    # --- Añadir esto lo antes posible en unified_main.py (después de load_dotenv) ---
+
+# --- Añadir esto lo antes posible en unified_main.py (después de load_dotenv) ---
 from logger_config import setup_logging
 # Ruta relativa dentro del repo: se creará la carpeta logs y el archivo
 setup_logging(logfile="logs/unified_main.log.txt", level=logging.INFO)
 # ------------------------------------------------------------------------------
+
 from src.config import (
     API_KEY, API_SECRET, USE_TESTNET, DRY_RUN, DAILY_PROFIT_TARGET,
     TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, HEDGE_MODE
@@ -43,7 +45,7 @@ from src.trading.scalping_order_manager import ScalpingOrderManager
 from ta.trend import EMAIndicator
 from ta.momentum import RSIIndicator
 
-logging.basicConfig(level=logging.INFO)
+# Obtener logger para este módulo (root logger ya configurado por setup_logging)
 logger = logging.getLogger(__name__)
 
 # ===== Parámetros (desde env con valores por defecto) =====
