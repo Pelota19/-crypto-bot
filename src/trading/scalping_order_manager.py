@@ -7,8 +7,12 @@ y TP (TAKE_PROFIT_LIMIT con fallback a TAKE_PROFIT_MARKET).
 
 Soporta sizing por riesgo (RISK_USDT) o por porcentaje (POSITION_SIZE_PERCENT).
 Incluye helper para colocar SL/TP cuando la entry se llenó después del timeout.
-"""
 
+Mejoras importantes:
+- Si la creación de STOP_MARKET falla con "Order would immediately trigger" (OrderImmediatelyFillable),
+  colocamos una orden MARKET inmediata (reduceOnly) para cerrar la posición y registrarla como SL fallback.
+- Manejo de reintentos sin reduceOnly y logging más claro de fallbacks.
+"""
 import asyncio
 import logging
 from typing import Optional, Tuple, Dict, Any
@@ -208,6 +212,7 @@ class ScalpingOrderManager:
                     sl_params["workingType"] = "MARK_PRICE"
                 if self.hedge_mode:
                     sl_params["positionSide"] = position_side
+                # Try creating stop_market
                 sl_order = await self.exchange.create_order(symbol, "stop_market", "sell" if side.lower() == "long" else "buy", real_qty, None, sl_params)
                 sl_id = sl_order.get("id") or sl_order.get("info", {}).get("orderId")
                 sl_type = (sl_order.get("type") or sl_order.get("info", {}).get("origType") or "stop_market").lower()
@@ -215,7 +220,29 @@ class ScalpingOrderManager:
                 meta["sl_type"] = sl_type
                 self.state.set_sl_order(symbol, sl_id, sl_type, fallback_used=False)
                 logger.info("SL placed for %s: id=%s type=%s", symbol, sl_id, sl_type)
+            except ccxt.errors.OrderImmediatelyFillable as oe:
+                # stop would immediately trigger -> place immediate market close as fallback
+                logger.warning("SL would immediately trigger for %s: %s -> placing immediate MARKET close", symbol, oe)
+                try:
+                    params_market_close = {"reduceOnly": True}
+                    if self.hedge_mode and position_side:
+                        params_market_close["positionSide"] = position_side
+                    close_order = await self.exchange.create_order(symbol, "market", "sell" if side.lower() == "long" else "buy", real_qty, None, params_market_close)
+                    close_id = close_order.get("id") or close_order.get("info", {}).get("orderId")
+                    meta["sl_order_id"] = close_id
+                    meta["sl_type"] = (close_order.get("type") or close_order.get("info", {}).get("origType") or "market").lower()
+                    self.state.set_sl_order(symbol, close_id, meta["sl_type"], fallback_used=True)
+                    logger.info("Placed MARKET close for %s as SL-fallback: id=%s", symbol, close_id)
+                    if self.notifier:
+                        try:
+                            await self.notifier.send_message(f"⚠️ SL would immediately trigger for {symbol}; executed MARKET close id={close_id}")
+                        except Exception:
+                            pass
+                except Exception as e3:
+                    logger.exception("Failed to place MARKET close for %s after immediate-trigger: %s", symbol, e3)
+                    meta["errors"].append(f"sl_market_close_failed:{e3}")
             except Exception as e:
+                # Generic exception: try sanitized retry (remove reduceOnly) and also handle immediate-trigger on retry
                 logger.exception("SL placement failed for %s: %s", symbol, e)
                 meta["errors"].append(f"sl_create_failed:{e}")
                 try:
@@ -224,6 +251,8 @@ class ScalpingOrderManager:
                         params_retry["workingType"] = "MARK_PRICE"
                     if self.hedge_mode:
                         params_retry["positionSide"] = position_side
+                    # remove reduceOnly if present
+                    params_retry.pop("reduceOnly", None)
                     sl_order = await self.exchange.create_order(symbol, "stop_market", "sell" if side.lower() == "long" else "buy", real_qty, None, params_retry)
                     sl_id = sl_order.get("id") or sl_order.get("info", {}).get("orderId")
                     sl_type = (sl_order.get("type") or sl_order.get("info", {}).get("origType") or "stop_market").lower()
@@ -236,6 +265,31 @@ class ScalpingOrderManager:
                             await self.notifier.send_message(f"⚠️ SL fallback used for {symbol}: {sl_type}")
                         except Exception:
                             pass
+                except ccxt.errors.OrderImmediatelyFillable as oe2:
+                    logger.warning("SL retry would immediately trigger for %s: %s -> placing immediate MARKET close", symbol, oe2)
+                    try:
+                        params_market_close = {"reduceOnly": True}
+                        if self.hedge_mode and position_side:
+                            params_market_close["positionSide"] = position_side
+                        close_order = await self.exchange.create_order(symbol, "market", "sell" if side.lower() == "long" else "buy", real_qty, None, params_market_close)
+                        close_id = close_order.get("id") or close_order.get("info", {}).get("orderId")
+                        meta["sl_order_id"] = close_id
+                        meta["sl_type"] = (close_order.get("type") or close_order.get("info", {}).get("origType") or "market").lower()
+                        self.state.set_sl_order(symbol, close_id, meta["sl_type"], fallback_used=True)
+                        logger.info("Placed MARKET close for %s as SL-fallback after retry: id=%s", symbol, close_id)
+                        if self.notifier:
+                            try:
+                                await self.notifier.send_message(f"⚠️ SL would immediately trigger for {symbol} on retry; executed MARKET close id={close_id}")
+                            except Exception:
+                                pass
+                    except Exception as e4:
+                        logger.exception("SL fallback also failed for %s (market close failed): %s", symbol, e4)
+                        meta["errors"].append(f"sl_fallback_failed:{e4}")
+                        if self.notifier:
+                            try:
+                                await self.notifier.send_message(f"❌ SL placement failed for {symbol}: {e4}")
+                            except Exception:
+                                pass
                 except Exception as e2:
                     logger.exception("SL fallback also failed for %s: %s", symbol, e2)
                     meta["errors"].append(f"sl_fallback_failed:{e2}")
@@ -487,6 +541,26 @@ class ScalpingOrderManager:
                 meta["sl_type"] = sl_type
                 self.state.set_sl_order(symbol, sl_id, sl_type, fallback_used=False)
                 logger.info("SL (post-fill) placed for %s: id=%s type=%s", symbol, sl_id, sl_type)
+            except ccxt.errors.OrderImmediatelyFillable as oe:
+                logger.warning("SL (post-fill) would immediately trigger for %s: %s -> placing immediate MARKET close", symbol, oe)
+                try:
+                    params_market_close = {"reduceOnly": True}
+                    if self.hedge_mode and position_side:
+                        params_market_close["positionSide"] = position_side
+                    close_order = await self.exchange.create_order(symbol, "market", "sell" if side.lower() == "long" else "buy", real_qty, None, params_market_close)
+                    close_id = close_order.get("id") or close_order.get("info", {}).get("orderId")
+                    meta["sl_order_id"] = close_id
+                    meta["sl_type"] = (close_order.get("type") or close_order.get("info", {}).get("origType") or "market").lower()
+                    self.state.set_sl_order(symbol, close_id, meta["sl_type"], fallback_used=True)
+                    logger.info("SL (post-fill) MARKET close placed for %s: id=%s", symbol, close_id)
+                    if notify and self.notifier:
+                        try:
+                            await self.notifier.send_message(f"⚠️ SL (post-fill) would immediately trigger for {symbol}; executed MARKET close id={close_id}")
+                        except Exception:
+                            pass
+                except Exception as e3:
+                    logger.exception("Failed to place SL (post-fill) MARKET close for %s: %s", symbol, e3)
+                    meta["errors"].append(f"sl_market_close_failed:{e3}")
             except Exception as e:
                 logger.exception("SL (post-fill) placement failed for %s: %s", symbol, e)
                 meta["errors"].append(f"sl_create_failed:{e}")
@@ -497,6 +571,7 @@ class ScalpingOrderManager:
                         params_retry["workingType"] = "MARK_PRICE"
                     if self.hedge_mode and position_side:
                         params_retry["positionSide"] = position_side
+                    params_retry.pop("reduceOnly", None)
                     sl_order = await self.exchange.create_order(symbol, "stop_market", "sell" if side.lower() == "long" else "buy", real_qty, None, params_retry)
                     sl_id = sl_order.get("id") or sl_order.get("info", {}).get("orderId")
                     sl_type = (sl_order.get("type") or sl_order.get("info", {}).get("origType") or "stop_market").lower()
@@ -504,16 +579,41 @@ class ScalpingOrderManager:
                     meta["sl_type"] = sl_type
                     self.state.set_sl_order(symbol, sl_id, sl_type, fallback_used=True)
                     logger.info("SL (post-fill) placed after retry for %s: id=%s type=%s", symbol, sl_id, sl_type)
+                except ccxt.errors.OrderImmediatelyFillable as oe2:
+                    logger.warning("SL (post-fill) retry would immediately trigger for %s: %s -> placing immediate MARKET close", symbol, oe2)
+                    try:
+                        params_market_close = {"reduceOnly": True}
+                        if self.hedge_mode and position_side:
+                            params_market_close["positionSide"] = position_side
+                        close_order = await self.exchange.create_order(symbol, "market", "sell" if side.lower() == "long" else "buy", real_qty, None, params_market_close)
+                        close_id = close_order.get("id") or close_order.get("info", {}).get("orderId")
+                        meta["sl_order_id"] = close_id
+                        meta["sl_type"] = (close_order.get("type") or close_order.get("info", {}).get("origType") or "market").lower()
+                        self.state.set_sl_order(symbol, close_id, meta["sl_type"], fallback_used=True)
+                        logger.info("SL (post-fill) MARKET close placed for %s after retry: id=%s", symbol, close_id)
+                        if notify and self.notifier:
+                            try:
+                                await self.notifier.send_message(f"⚠️ SL (post-fill) would immediately trigger for {symbol} on retry; executed MARKET close id={close_id}")
+                            except Exception:
+                                pass
+                    except Exception as e4:
+                        logger.exception("SL (post-fill) fallback also failed for %s (market close failed): %s", symbol, e4)
+                        meta["errors"].append(f"sl_fallback_failed:{e4}")
+                        if notify and self.notifier:
+                            try:
+                                await self.notifier.send_message(f"❌ SL (post-fill) placement failed for {symbol}: {e4}")
+                            except Exception:
+                                pass
                 except Exception as e2:
                     logger.exception("SL (post-fill) fallback also failed for %s: %s", symbol, e2)
                     meta["errors"].append(f"sl_fallback_failed:{e2}")
                     if notify and self.notifier:
                         try:
-                            await self.notifier.send_message(f"❌ SL placement failed for {symbol} after entry fills: {e2}")
+                            await self.notifier.send_message(f"❌ SL (post-fill) placement failed for {symbol}: {e2}")
                         except Exception:
                             pass
 
-            # Place TP logic: check mark price to avoid immediate trigger
+            # Place TP logic (same as in place_scalping_trade) - reuse previous implementation
             try:
                 ticker = await self.exchange.fetch_ticker(symbol)
                 mark_price = None
@@ -539,7 +639,6 @@ class ScalpingOrderManager:
                     tp_params["positionSide"] = position_side
 
                 if too_close:
-                    # Place immediate market close (take_profit_market) to secure profit
                     logger.warning("TP (post-fill) for %s too close to market (tp=%s mark=%s); placing immediate MARKET close", symbol, tp_price, mark_price)
                     try:
                         params_market_tp = {"stopPrice": tp_price, "reduceOnly": True}
@@ -569,8 +668,7 @@ class ScalpingOrderManager:
                     logger.info("TP (post-fill) placed for %s: id=%s type=%s", symbol, tp_id, tp_type)
 
             except ccxt.errors.OrderImmediatelyFillable as e:
-                # place immediate market close
-                logger.warning("TP would immediately trigger for %s (post-fill): %s -> placing market close", symbol, e)
+                logger.warning("TP (post-fill) would immediately trigger for %s: %s -> placing market close", symbol, e)
                 try:
                     params_market_tp = {"stopPrice": tp_price, "reduceOnly": True}
                     if self.hedge_mode and position_side:
