@@ -6,6 +6,7 @@ Gestiona la colocación de entradas LIMIT, creación de SL (STOP_MARKET con MARK
 y TP (TAKE_PROFIT_LIMIT con fallback a TAKE_PROFIT_MARKET).
 
 Soporta sizing por riesgo (RISK_USDT) o por porcentaje (POSITION_SIZE_PERCENT).
+Incluye helper para colocar SL/TP cuando la entry se llenó después del timeout.
 """
 
 import asyncio
@@ -410,3 +411,212 @@ class ScalpingOrderManager:
             return
         except Exception as e:
             logger.exception("Error in TP timeout monitor for %s: %s", symbol, e)
+            return
+
+    # --- New helper to place SL/TP for positions that filled after the entry timeout ---
+    async def place_sl_tp_for_existing_position(
+        self,
+        symbol: str,
+        side: str,
+        entry_avg: float,
+        filled_qty: float,
+        stop_loss_pct: float,
+        rr_ratio: float,
+        position_side_override: Optional[str] = None,
+        notify: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Coloca SL y TP para una posición existente que ya tiene fills (entry_avg, filled_qty).
+        Se usa cuando la entrada se llenó después de que place_scalping_trade abortara SL/TP.
+        Devuelve un meta dict similar a place_scalping_trade con ids y errores (si los hubo).
+        """
+        lock = self._get_lock(symbol)
+        async with lock:
+            meta = {
+                "symbol": symbol,
+                "side": side,
+                "entry_avg": entry_avg,
+                "requested_qty": filled_qty,
+                "sl": None,
+                "tp": None,
+                "sl_order_id": None,
+                "tp_order_id": None,
+                "sl_type": None,
+                "tp_type": None,
+                "errors": [],
+            }
+
+            real_qty = float(filled_qty)
+            if real_qty <= 0:
+                meta["errors"].append("no_qty")
+                return meta
+
+            # round qty to market step
+            try:
+                real_qty = self.exchange.adjust_amount_to_step(symbol, real_qty)
+            except Exception as e:
+                logger.debug("adjust_amount_to_step error in place_sl_tp_for_existing_position: %s", e)
+            if real_qty <= 0:
+                meta["errors"].append("real_qty_after_adjustment_zero")
+                return meta
+
+            # compute SL and TP based on executed average price
+            try:
+                sl_price, tp_price = self.calculate_sl_tp_prices(float(entry_avg), side, stop_loss_pct, rr_ratio)
+                meta["sl"] = sl_price
+                meta["tp"] = tp_price
+            except Exception as e:
+                meta["errors"].append(f"calc_sl_tp_failed:{e}")
+                return meta
+
+            position_side = position_side_override
+            if self.hedge_mode and not position_side:
+                position_side = "LONG" if side.lower() == "long" else "SHORT"
+
+            # Place SL
+            try:
+                sl_params = {"stopPrice": sl_price, "reduceOnly": True}
+                if USE_MARK_PRICE_FOR_SL:
+                    sl_params["workingType"] = "MARK_PRICE"
+                if self.hedge_mode and position_side:
+                    sl_params["positionSide"] = position_side
+                sl_order = await self.exchange.create_order(symbol, "stop_market", "sell" if side.lower() == "long" else "buy", real_qty, None, sl_params)
+                sl_id = sl_order.get("id") or sl_order.get("info", {}).get("orderId")
+                sl_type = (sl_order.get("type") or sl_order.get("info", {}).get("origType") or "stop_market").lower()
+                meta["sl_order_id"] = sl_id
+                meta["sl_type"] = sl_type
+                self.state.set_sl_order(symbol, sl_id, sl_type, fallback_used=False)
+                logger.info("SL (post-fill) placed for %s: id=%s type=%s", symbol, sl_id, sl_type)
+            except Exception as e:
+                logger.exception("SL (post-fill) placement failed for %s: %s", symbol, e)
+                meta["errors"].append(f"sl_create_failed:{e}")
+                # retry sanitized
+                try:
+                    params_retry = {"stopPrice": sl_price}
+                    if USE_MARK_PRICE_FOR_SL:
+                        params_retry["workingType"] = "MARK_PRICE"
+                    if self.hedge_mode and position_side:
+                        params_retry["positionSide"] = position_side
+                    sl_order = await self.exchange.create_order(symbol, "stop_market", "sell" if side.lower() == "long" else "buy", real_qty, None, params_retry)
+                    sl_id = sl_order.get("id") or sl_order.get("info", {}).get("orderId")
+                    sl_type = (sl_order.get("type") or sl_order.get("info", {}).get("origType") or "stop_market").lower()
+                    meta["sl_order_id"] = sl_id
+                    meta["sl_type"] = sl_type
+                    self.state.set_sl_order(symbol, sl_id, sl_type, fallback_used=True)
+                    logger.info("SL (post-fill) placed after retry for %s: id=%s type=%s", symbol, sl_id, sl_type)
+                except Exception as e2:
+                    logger.exception("SL (post-fill) fallback also failed for %s: %s", symbol, e2)
+                    meta["errors"].append(f"sl_fallback_failed:{e2}")
+                    if notify and self.notifier:
+                        try:
+                            await self.notifier.send_message(f"❌ SL placement failed for {symbol} after entry fills: {e2}")
+                        except Exception:
+                            pass
+
+            # Place TP logic: check mark price to avoid immediate trigger
+            try:
+                ticker = await self.exchange.fetch_ticker(symbol)
+                mark_price = None
+                try:
+                    mark_price = float(ticker.get("info", {}).get("markPrice") or ticker.get("last") or ticker.get("close"))
+                except Exception:
+                    try:
+                        mark_price = float(ticker.get("last") or ticker.get("close"))
+                    except Exception:
+                        mark_price = None
+
+                too_close = False
+                if mark_price is not None:
+                    if side.lower() == "long":
+                        if tp_price <= mark_price * (1 + MIN_TP_DISTANCE_PCT):
+                            too_close = True
+                    else:
+                        if tp_price >= mark_price * (1 - MIN_TP_DISTANCE_PCT):
+                            too_close = True
+
+                tp_params = {"stopPrice": tp_price, "reduceOnly": True, "timeInForce": "GTC"}
+                if self.hedge_mode and position_side:
+                    tp_params["positionSide"] = position_side
+
+                if too_close:
+                    # Place immediate market close (take_profit_market) to secure profit
+                    logger.warning("TP (post-fill) for %s too close to market (tp=%s mark=%s); placing immediate MARKET close", symbol, tp_price, mark_price)
+                    try:
+                        params_market_tp = {"stopPrice": tp_price, "reduceOnly": True}
+                        if self.hedge_mode and position_side:
+                            params_market_tp["positionSide"] = position_side
+                        tp_market = await self.exchange.create_order(symbol, "take_profit_market", "sell" if side.lower() == "long" else "buy", real_qty, None, params_market_tp)
+                        tp_market_id = tp_market.get("id") or tp_market.get("info", {}).get("orderId")
+                        meta["tp_order_id"] = tp_market_id
+                        meta["tp_type"] = (tp_market.get("type") or tp_market.get("info", {}).get("origType") or "take_profit_market").lower()
+                        self.state.set_tp_order(symbol, tp_market_id, meta["tp_type"], fallback_used=True)
+                        meta["tp_fallback_to_market"] = True
+                        if notify and self.notifier:
+                            try:
+                                await self.notifier.send_message(f"⚠️ TP immediate MARKET placed for {symbol} after fills (tp={tp_price})")
+                            except Exception:
+                                pass
+                    except Exception as e:
+                        logger.exception("Failed to place immediate TP_MARKET (post-fill) for %s: %s", symbol, e)
+                        meta["errors"].append(f"tp_immediate_market_failed:{e}")
+                else:
+                    tp_order = await self.exchange.create_order(symbol, "take_profit_limit", "sell" if side.lower() == "long" else "buy", real_qty, tp_price, tp_params)
+                    tp_id = tp_order.get("id") or tp_order.get("info", {}).get("orderId")
+                    tp_type = (tp_order.get("type") or tp_order.get("info", {}).get("origType") or "take_profit_limit").lower()
+                    meta["tp_order_id"] = tp_id
+                    meta["tp_type"] = tp_type
+                    self.state.set_tp_order(symbol, tp_id, tp_type, fallback_used=False)
+                    logger.info("TP (post-fill) placed for %s: id=%s type=%s", symbol, tp_id, tp_type)
+
+            except ccxt.errors.OrderImmediatelyFillable as e:
+                # place immediate market close
+                logger.warning("TP would immediately trigger for %s (post-fill): %s -> placing market close", symbol, e)
+                try:
+                    params_market_tp = {"stopPrice": tp_price, "reduceOnly": True}
+                    if self.hedge_mode and position_side:
+                        params_market_tp["positionSide"] = position_side
+                    tp_market = await self.exchange.create_order(symbol, "market", "sell" if side.lower() == "long" else "buy", real_qty, None, params_market_tp)
+                    tp_market_id = tp_market.get("id") or tp_market.get("info", {}).get("orderId")
+                    meta["tp_order_id"] = tp_market_id
+                    meta["tp_type"] = (tp_market.get("type") or tp_market.get("info", {}).get("origType") or "market").lower()
+                    self.state.set_tp_order(symbol, tp_market_id, meta["tp_type"], fallback_used=True)
+                    meta["tp_fallback_to_market"] = True
+                    if notify and self.notifier:
+                        try:
+                            await self.notifier.send_message(f"⚠️ TP immediate MARKET placed for {symbol} after immediate-fill error")
+                        except Exception:
+                            pass
+                except Exception as e2:
+                    logger.exception("Failed to place market close (post-fill) for %s after immediate-fill: %s", symbol, e2)
+                    meta["errors"].append(f"tp_market_after_immediate_failed:{e2}")
+
+            except Exception as e:
+                logger.exception("TP (post-fill) placement failed for %s: %s", symbol, e)
+                meta["errors"].append(f"tp_create_failed:{e}")
+                try:
+                    params_retry = {"stopPrice": tp_price, "timeInForce": "GTC"}
+                    if self.hedge_mode:
+                        params_retry["positionSide"] = position_side
+                    tp_order = await self.exchange.create_order(symbol, "take_profit_limit", "sell" if side.lower() == "long" else "buy", real_qty, tp_price, params_retry)
+                    tp_id = tp_order.get("id") or tp_order.get("info", {}).get("orderId")
+                    tp_type = (tp_order.get("type") or tp_order.get("info", {}).get("origType") or "take_profit_limit").lower()
+                    meta["tp_order_id"] = tp_id
+                    meta["tp_type"] = tp_type
+                    self.state.set_tp_order(symbol, tp_id, tp_type, fallback_used=True)
+                    meta["tp_fallback_to_market"] = (tp_type != "take_profit_limit")
+                    logger.info("TP (post-fill) placed after retry for %s: id=%s type=%s", symbol, tp_id, tp_type)
+                    if meta["tp_fallback_to_market"] and notify and self.notifier:
+                        try:
+                            await self.notifier.send_message(f"⚠️ TP fallback used for {symbol} after fills: {tp_type}")
+                        except Exception:
+                            pass
+                except Exception as e2:
+                    logger.exception("TP (post-fill) fallback also failed for %s: %s", symbol, e2)
+                    meta["errors"].append(f"tp_fallback_failed:{e2}")
+                    if notify and self.notifier:
+                        try:
+                            await self.notifier.send_message(f"❌ TP placement failed for {symbol} after fills: {e2}")
+                        except Exception:
+                            pass
+
+            return meta
