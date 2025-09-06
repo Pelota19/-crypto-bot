@@ -12,18 +12,21 @@ def setup_logging(
 ):
     """
     Configura logging raíz:
-    - RotatingFileHandler -> logfile (se crea la carpeta si hace falta)
-    - NO agrega StreamHandler (no imprime en consola)
-    - Redirige stdout/stderr al logger (prints y tracebacks irán al archivo)
+    - RotatingFileHandler -> logfile
+    - StreamHandler -> escribe al stdout real (para mostrar en consola)
+    - Redirige stdout/stderr al logger (prints y excepciones quedan en el logfile y en consola)
     """
+    # Guardar referencias al stdout/stderr originales PARA evitar recursión
+    original_stdout = sys.stdout
+    original_stderr = sys.stderr
+
     log_path = Path(logfile)
-    # Si logfile es relativo, interpretarlo desde el cwd actual.
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
     logger = logging.getLogger()
     logger.setLevel(level)
 
-    # Eliminar handlers previos para evitar duplicados
+    # Eliminar handlers previos para evitar duplicados si se llama varias veces
     for h in list(logger.handlers):
         logger.removeHandler(h)
 
@@ -40,23 +43,32 @@ def setup_logging(
     fh.setFormatter(fmt)
     logger.addHandler(fh)
 
-    # Redirigir stdout/stderr al logger
+    # Console handler que escribe al stdout ORIGINAL (no al sys.stdout que luego redirigimos)
+    ch = logging.StreamHandler(stream=original_stdout)
+    ch.setLevel(level)
+    ch.setFormatter(fmt)
+    logger.addHandler(ch)
+
+    # Redirigir stdout/stderr al logger (captura prints y tracebacks)
     class StreamToLogger:
         def __init__(self, level):
             self.level = level
+            self._buffer = ""
 
         def write(self, message):
-            # Evitar mensajes vacíos
             if not message:
                 return
-            message = message.rstrip("\n")
-            if not message:
-                return
-            for line in message.splitlines():
-                logging.getLogger().log(self.level, line)
+            # Buffer para concatenar fragmentos hasta newline
+            self._buffer += message
+            while "\n" in self._buffer:
+                line, self._buffer = self._buffer.split("\n", 1)
+                if line:
+                    logging.getLogger().log(self.level, line)
 
         def flush(self):
-            pass
+            if self._buffer:
+                logging.getLogger().log(self.level, self._buffer)
+                self._buffer = ""
 
     sys.stdout = StreamToLogger(logging.INFO)
     sys.stderr = StreamToLogger(logging.ERROR)
