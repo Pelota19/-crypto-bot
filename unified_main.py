@@ -27,7 +27,11 @@ try:
     load_dotenv()
 except Exception:
     pass
-
+    # --- Añadir esto lo antes posible en unified_main.py (después de load_dotenv) ---
+from logger_config import setup_logging
+# Ruta relativa dentro del repo: se creará la carpeta logs y el archivo
+setup_logging(logfile="logs/unified_main.log.txt", level=logging.INFO)
+# ------------------------------------------------------------------------------
 from src.config import (
     API_KEY, API_SECRET, USE_TESTNET, DRY_RUN, DAILY_PROFIT_TARGET,
     TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, HEDGE_MODE
