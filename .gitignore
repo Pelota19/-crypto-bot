@@ -18,6 +18,7 @@ __pycache__/
 logs/
 *.log
 *.log.*
+!logs/unified_main.log.txt
 
 # Backup/temp
 *.bak
