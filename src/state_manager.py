@@ -6,11 +6,13 @@ from typing import Dict, Any, Optional, List
 logger = logging.getLogger(__name__)
 
 class StateManager:
-    """Gestión avanzada del estado del bot, con tracking de órdenes SL/TP y cierre."""
+    """Gestión del estado del bot con tracking extendido para SL/TP y cierres."""
 
     def __init__(self, daily_profit_target: float = 50.0):
         # open_positions: symbol -> dict with keys:
-        # { side, entry, quantity, sl, tp, entry_order_id, sl_order_id, tp_order_id, created_at, entry_avg, entry_filled, closed }
+        # { side, entry, quantity, sl, tp, entry_order_id, sl_order_id, tp_order_id,
+        #   entry_avg, entry_filled, sl_type, tp_type, sl_fallback, tp_fallback,
+        #   created_at, closed }
         self.open_positions: Dict[str, Dict[str, Any]] = {}
         # closed history list of dicts
         self.closed_positions_history: List[Dict[str, Any]] = []
@@ -49,6 +51,7 @@ class StateManager:
         """
         Registra la posición abierta. entry_avg y entry_filled pueden actualizarse
         por el monitor cuando la entrada se ejecute (parcial/total).
+        Se añaden campos para trackeo de tipos y fallbacks.
         """
         self.open_positions[symbol] = {
             "side": side,
@@ -61,6 +64,10 @@ class StateManager:
             "tp_order_id": tp_order_id,
             "entry_avg": float(entry_avg) if entry_avg is not None else None,
             "entry_filled": float(entry_filled or 0.0),
+            "sl_type": None,
+            "tp_type": None,
+            "sl_fallback": False,
+            "tp_fallback": False,
             "created_at": datetime.datetime.utcnow(),
             "closed": False,
         }
@@ -79,6 +86,26 @@ class StateManager:
         pos["quantity"] = float(filled)
         self.open_positions[symbol] = pos
         logger.info("Entry execution updated for %s: filled=%s avg=%s", symbol, filled, avg)
+
+    def set_sl_order(self, symbol: str, order_id: Optional[str], order_type: Optional[str], fallback_used: bool = False):
+        pos = self.open_positions.get(symbol)
+        if not pos:
+            return
+        pos["sl_order_id"] = order_id
+        pos["sl_type"] = order_type
+        pos["sl_fallback"] = bool(fallback_used)
+        self.open_positions[symbol] = pos
+        logger.info("SL order recorded for %s: id=%s type=%s fallback=%s", symbol, order_id, order_type, fallback_used)
+
+    def set_tp_order(self, symbol: str, order_id: Optional[str], order_type: Optional[str], fallback_used: bool = False):
+        pos = self.open_positions.get(symbol)
+        if not pos:
+            return
+        pos["tp_order_id"] = order_id
+        pos["tp_type"] = order_type
+        pos["tp_fallback"] = bool(fallback_used)
+        self.open_positions[symbol] = pos
+        logger.info("TP order recorded for %s: id=%s type=%s fallback=%s", symbol, order_id, order_type, fallback_used)
 
     def register_closed_position(self, symbol: str, pnl: float, reason: str, close_price: Optional[float] = None, close_order_id: Optional[str] = None):
         pos = self.open_positions.pop(symbol, None)
@@ -101,6 +128,18 @@ class StateManager:
         self.closed_positions_history.append(record)
         self.realized_pnl_today += float(pnl)
         logger.info(f"✅  Operación cerrada en {symbol} por {reason} con PnL {pnl:.2f} USDT (Total diario: {self.realized_pnl_today:.2f})")
+
+    def set_final_close_info(self, symbol: str, close_order_id: Optional[str], close_type: Optional[str], pnl: Optional[float]):
+        """
+        Guarda metadatos sobre el cierre (tipo de orden final y PnL).
+        """
+        # find in closed history the record and add details if present
+        for rec in reversed(self.closed_positions_history):
+            if rec.get("symbol") == symbol and rec.get("close_order_id") == close_order_id:
+                rec["final_close_type"] = close_type
+                rec["pnl"] = float(pnl) if pnl is not None else rec.get("pnl", 0.0)
+                rec["annotated_at"] = datetime.datetime.utcnow()
+                break
 
     def get_open_positions(self) -> Dict[str, Dict[str, Any]]:
         return self.open_positions
