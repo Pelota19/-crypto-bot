@@ -8,6 +8,7 @@ Incluye:
 - ajuste de qty a stepSize con BinanceClient.adjust_amount_to_step
 - integración con ScalpingOrderManager
 - monitor de fills (único emisor de notificaciones) que calcula PnL por trades y notifica
+- lógica para crear SL/TP cuando la entry se llena después del timeout
 - tareas auxiliares: symbols_refresher, periodic_report, watchdog
 """
 
@@ -232,6 +233,7 @@ class CryptoBot:
         Monitor que:
          - actualiza entry_filled/entry_avg
          - detecta ejecuciones SL/TP
+         - coloca SL/TP post-fill si la entry se llenó después de abortar SL/TP
          - calcula PnL usando trades (fetch_trades_for_order) y notifica
          - cancela orden opuesta y registra cierre
         """
@@ -312,6 +314,7 @@ class CryptoBot:
                     if closed_flag:
                         continue
 
+                    # 1) Revisar ejecución de la entry (parciales)
                     if entry_id:
                         order = await self.exchange.fetch_order(entry_id, sym)
                         if order:
@@ -325,6 +328,36 @@ class CryptoBot:
                                 self.state.update_entry_execution(sym, filled, avg or entry_price)
                                 await self.safe_send_telegram(f"✳️ {sym} ENTRY ejecutada {side.upper()} qty={filled:.6f} avg={avg or entry_price:.6f}")
 
+                                # NEW: si la posición no tiene SL o TP registrados, colocarlos ahora
+                                pos_after = self.state.get_open_positions().get(sym, {})
+                                has_sl = bool(pos_after.get("sl_order_id"))
+                                has_tp = bool(pos_after.get("tp_order_id"))
+                                # solo si no existe SL/TP intentamos colocarlos (evitar duplicados)
+                                if not has_sl or not has_tp:
+                                    # use entry_avg if available
+                                    entry_used_price = float(pos_after.get("entry_avg") or pos_after.get("entry") or entry_price)
+                                    qty_for_protection = float(pos_after.get("entry_filled") or filled)
+                                    logger.info("Detected fills for %s; placing missing SL/TP (sl_exists=%s tp_exists=%s) qty=%s avg=%s", sym, has_sl, has_tp, qty_for_protection, entry_used_price)
+                                    try:
+                                        meta_post = await self.scalper.place_sl_tp_for_existing_position(
+                                            symbol=sym,
+                                            side=side,
+                                            entry_avg=entry_used_price,
+                                            filled_qty=qty_for_protection,
+                                            stop_loss_pct=STOP_LOSS_PCT,
+                                            rr_ratio=RISK_REWARD_RATIO,
+                                            position_side_override=pos_after.get("positionSide"),
+                                            notify=True,
+                                        )
+                                        # log outcome
+                                        if meta_post.get("errors"):
+                                            logger.warning("Post-fill SL/TP placement for %s returned errors: %s", sym, meta_post.get("errors"))
+                                        else:
+                                            logger.info("Post-fill SL/TP placement for %s succeeded: sl=%s tp=%s", sym, meta_post.get("sl"), meta_post.get("tp"))
+                                    except Exception as e:
+                                        logger.exception("Error placing SL/TP after fills for %s: %s", sym, e)
+
+                    # Helper para procesar un order id (SL o TP)
                     async def _process_close_order(order_id, reason_label):
                         if not order_id:
                             return False
@@ -378,6 +411,7 @@ class CryptoBot:
                                 await self.safe_send_telegram(f"🔒 {sym} cerrada por SL. PnL: {pnl:.2f} USDT | Qty: {filled:.6f} | Entry {pos.get('entry_avg') or pos.get('entry'):.6f} -> Close {close_price}")
                         return True
 
+                    # 2) Procesar SL primero, luego TP
                     if pos.get("sl_order_id"):
                         sl_triggered = await _process_close_order(pos.get("sl_order_id"), "SL")
                         if sl_triggered:
